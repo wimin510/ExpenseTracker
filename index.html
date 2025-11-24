@@ -52,7 +52,7 @@
         </div>
         
         <!-- Error/Alert Area -->
-        <div id="alert-area" class="mt-4 text-sm font-medium text-red-600 hidden p-2 bg-red-100 rounded-lg"></div>
+        <div id="alert-area" class="mt-4 text-sm font-medium text-red-600 hidden p-2 bg-red-100 rounded-lg text-left whitespace-pre-wrap"></div>
         
         <!-- App ID for debugging purposes -->
         <p id="app-id-display" class="mt-4 text-xs text-gray-400">App ID: loading...</p>
@@ -144,15 +144,30 @@
         }
 
         async function handleGoogleSignIn() {
+            displayAlert("正在嘗試 Google 登入...");
             try {
                 const provider = new GoogleAuthProvider();
                 await signInWithPopup(auth, provider);
                 // onAuthStateChanged 會自動處理 UI 更新
             } catch (error) {
                 console.error("Google Sign-in Error:", error);
-                if (error.code !== 'auth/popup-closed-by-user') {
-                    displayAlert(`登入失敗: ${error.message}`);
+
+                let errorMessage = `登入失敗 (${error.code})`;
+                
+                // 根據常見的 Firebase 錯誤碼提供更具體的提示
+                if (error.code === 'auth/popup-closed-by-user') {
+                    errorMessage = '使用者關閉了登入視窗。請重試。';
+                } else if (error.code === 'auth/unauthorized-domain') {
+                    errorMessage = '網域未授權。請到 Firebase Console 的 Authentication > Sign-in method 頁面檢查 "Authorized domains" 是否包含當前網域。';
+                } else if (error.code === 'auth/cancelled-popup-request') {
+                    errorMessage = '登入視窗請求已取消。請確保您沒有連續點擊按鈕。';
+                } else if (error.code === 'auth/operation-not-allowed') {
+                    errorMessage = 'Google 登入方式未啟用！請檢查 Firebase Console > Authentication > Sign-in method，並啟用 Google。';
+                } else {
+                    errorMessage = `登入失敗: ${error.message}\n錯誤碼: ${error.code}`;
                 }
+
+                displayAlert(errorMessage);
             }
         }
 
