@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>跨平台記帳程式</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Zen Maru Gothic (思源圓體 - 更圓潤可愛的風格) Font and Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Zen+Maru+Gothic:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        /* 使用 Zen Maru Gothic 作為主要的圓體風格字體 */
+        :root {
+            font-family: 'Zen Maru Gothic', 'Inter', sans-serif;
+        }
+        .main-bg {
+            background-color: #f7f9fb;
+        }
+        /* Custom scrollbar for better look */
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="main-bg min-h-screen flex flex-col">
+
+    <!-- Main Application Container -->
+    <div id="app" class="flex flex-col flex-grow max-w-4xl mx-auto w-full p-4 sm:p-6">
+        
+        <!-- Header & Navigation -->
+        <header class="bg-white shadow-md rounded-xl p-4 mb-4 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-indigo-700">記帳小幫手</h1>
+            <div class="flex space-x-2">
+                <button id="nav-record" class="nav-btn bg-indigo-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-indigo-600 transition duration-150">
+                    <svg class="w-5 h-5 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    紀錄
+                </button>
+                <button id="nav-report" class="nav-btn bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg hover:bg-gray-300 transition duration-150">
+                    <svg class="w-5 h-5 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v14L9 19zm0 0l-4 2v-14l4-2m0 0v16"></path></svg>
+                    報表
+                </button>
+            </div>
+        </header>
+
+        <!-- Content Area -->
+        <main id="content-area" class="flex-grow"></main>
+
+        <!-- Status & User Info -->
+        <footer class="text-center text-sm text-gray-500 mt-4">
+            <p id="status-message">載入中...</p>
+        </footer>
+
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Budget Alert Modal -->
+    <div id="alert-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm transform transition-all duration-300 scale-100">
+            <h3 id="alert-title" class="text-xl font-bold mb-3 text-red-600">預算警示</h3>
+            <p id="alert-message" class="text-gray-700 mb-6"></p>
+            <button onclick="document.getElementById('alert-modal').classList.add('hidden')" class="w-full bg-indigo-500 text-white py-2 rounded-lg font-semibold hover:bg-indigo-600 transition">確認</button>
+        </div>
+    </div>
+
+    <!-- Calculator Modal -->
+    <div id="calculator-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-xs transform transition-all duration-300 scale-100">
+            <h3 class="text-xl font-bold mb-4 text-indigo-700">計算機</h3>
+            <input type="text" id="calc-display" class="w-full text-right text-3xl font-mono p-3 mb-4 border border-gray-300 rounded-lg bg-gray-100" value="0" readonly>
+            
+            <div id="calc-buttons" class="grid grid-cols-4 gap-2">
+                <!-- Row 1 -->
+                <button data-value="C" class="calc-btn bg-red-400 text-white p-4 rounded-lg text-xl font-bold col-span-2">C</button>
+                <button data-value="/" class="calc-btn bg-gray-200 hover:bg-gray-300 p-4 rounded-lg text-xl font-bold">/</button>
+                <button data-value="*" class="calc-btn bg-gray-200 hover:bg-gray-300 p-4 rounded-lg text-xl font-bold">*</button>
+                <!-- Row 2 -->
+                <button data-value="7" class="calc-btn bg-gray-100 hover:bg-gray-200 p-4 rounded-lg text-xl font-bold">7</button>
+                <button data-value="8" class="calc-btn bg-gray-100 hover:bg-gray-200 p-4 rounded-lg text-xl font-bold">8</button>
+                <button data-value="9" class="calc-btn bg-gray-100 hover:bg-gray-200 p-4 rounded-lg text-xl font-bold">9</button>
+                <button data-value="-" class="calc-btn bg-gray-200 hover:bg-gray-300 p-4 rounded-lg text-xl font-bold">-</button>
+                <!-- Row 3 -->
+                <button data-value="4" class="calc-btn bg-gray-100 hover:bg-gray-200 p-4 rounded-lg text-xl font-bold">4</button>
+                <button data-value="5" class="calc-btn bg-gray-100 hover:bg-gray-200 p-4 rounded-lg text-xl font-bold">5</button>
+                <button data-value="6" class="calc-btn bg-gray-100 hover:bg-gray-200 p-4 rounded-lg text-xl font-bold">6</button>
+                <button data-value="+" class="calc-btn bg-gray-200 hover:bg-gray-300 p-4 rounded-lg text-xl font-bold">+</button>
+                <!-- Row 4 -->
+                <button data-value="1" class="calc-btn bg-gray-100 hover:bg-gray-200 p-4 rounded-lg text-xl font-bold">1</button>
+                <button data-value="2" class="calc-btn bg-gray-100 hover:bg-gray-200 p-4 rounded-lg text-xl font-bold">2</button>
+                <button data-value="3" class="calc-btn bg-gray-100 hover:bg-gray-200 p-4 rounded-lg text-xl font-bold">3</button>
+                <button data-value="=" class="calc-btn bg-indigo-500 text-white p-4 rounded-lg text-xl font-bold row-span-2">=</button>
+                <!-- Row 5 -->
+                <button data-value="0" class="calc-btn bg-gray-100 hover:bg-gray-200 p-4 rounded-lg text-xl font-bold col-span-2">0</button>
+                <button data-value="." class="calc-btn bg-gray-100 hover:bg-gray-200 p-4 rounded-lg text-xl font-bold">.</button>
+            </div>
+
+            <button id="calc-ok" class="w-full bg-green-500 text-white py-3 mt-4 rounded-lg font-bold text-lg hover:bg-green-600 transition">確認 (OK)</button>
+        </div>
+    </div>
+
+    <!-- Category Management Modal -->
+    <div id="category-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg transform transition-all duration-300 scale-100">
+            <h3 class="text-2xl font-bold mb-4 text-indigo-700">分類與預算管理</h3>
+            
+            <div class="mb-4">
+                <h4 class="text-lg font-semibold mb-2">新增/編輯分類</h4>
+                <div class="flex space-x-2 mb-2">
+                    <input type="text" id="new-category-name" placeholder="分類名稱 (e.g., 餐飲)" class="flex-grow p-2 border border-gray-300 rounded-lg">
+                    <input type="number" id="new-category-budget" placeholder="每月預算 (可選)" class="w-1/3 p-2 border border-gray-300 rounded-lg">
+                    <button id="save-category-btn" class="bg-green-500 text-white px-4 rounded-lg font-semibold hover:bg-green-600 transition">儲存分類</button>
+                </div>
+            </div>
+
+            <h4 class="text-lg font-semibold mb-2">現有分類列表</h4>
+            <div id="category-list" class="space-y-2 max-h-60 overflow-y-auto custom-scroll border p-3 rounded-lg bg-gray-50">
+                <!-- Categories will be rendered here -->
+            </div>
+
+            <button onclick="document.getElementById('category-modal').classList.add('hidden')" class="w-full bg-indigo-500 text-white py-2 mt-4 rounded-lg font-semibold hover:bg-indigo-600 transition">關閉</button>
+        </div>
+    </div>
+
+
+    <!-- Firebase & Application Logic -->
+    <script type="module">
+        // Import Firebase functions
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- Global Variables (Canvas Context) ---
+        // 確保這些變數已定義為環境所需的全域變數
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "AIzaSyBJcP4HOoVFnbzLT-jdnrW1AtAWXVfjEaM",
+            authDomain: "my-expense-tracker-574dd.firebaseapp.com",
+            projectId: "my-expense-tracker-574dd",
+            storageBucket: "my-expense-tracker-574dd.firebasestorage.app",
+            messagingSenderId: "514938495732",
+            appId: "1:514938495732:web:bb3529eca4f2db547b74a1",
+        };
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, db, auth;
+        let userId = null;
+        let isAuthReady = false;
+
+        // --- Application State ---
+        let categories = []; // [{ id, name, budget }]
+        let expenses = [];   // [{ id, amount, date, method, category, note }]
+        let currentView = 'record';
+        let expenseToEdit = null; // Used for editing existing expenses
+        let calculatorTargetInput = null; // The input field the calculator result should go to
+
+        const paymentMethods = [
+            { name: '現金', value: 'cash' },
+            { name: '信用卡', value: 'credit' },
+            { name: '其他', value: 'other' }
+        ];
+
+        // --- Utility Functions ---
+
+        /**
+         * Converts date to YYYY-MM-DD string format.
+         * @param {Date} date 
+         * @returns {string}
+         */
+        const formatDate = (date) => {
+            const d = new Date(date);
+            let month = '' + (d.getMonth() + 1);
+            let day = '' + d.getDate();
+            const year = d.getFullYear();
+
+            if (month.length < 2) month = '0' + month;
+            if (day.length < 2) day = '0' + day;
+
+            return [year, month, day].join('-');
+        };
+
+        /**
+         * Gets the Firestore collection path for user data.
+         * 修正: 移除 '/data' 以解決 "Invalid collection reference" 錯誤。
+         * 正確的路徑應為 5 個片段: artifacts/{appId}/users/{userId}/{collectionName}
+         * @param {string} collectionName 
+         * @returns {string}
+         */
+        const getCollectionPath = (collectionName) => {
+            // 修正後的路徑結構: artifacts/{appId}/users/{userId}/{collectionName}
+            return `artifacts/${appId}/users/${userId}/${collectionName}`;
+        };
+
+        /**
+         * Shows a custom alert modal.
+         * @param {string} title 
+         * @param {string} message 
+         * @param {string} colorClass 
+         */
+        const showAlert = (title, message, colorClass = 'text-red-600') => {
+            const modal = document.getElementById('alert-modal');
+            document.getElementById('alert-title').textContent = title;
+            document.getElementById('alert-title').className = `text-xl font-bold mb-3 ${colorClass}`;
+            document.getElementById('alert-message').textContent = message;
+            modal.classList.remove('hidden');
+        };
+
+        // --- Firebase Initialization and Auth ---
+
+        async function initFirebase() {
+            try {
+                // 1. Initialize Firebase
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                console.log("Firebase initialized.");
+
+                // 2. Set up Auth State Listener
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        isAuthReady = true;
+                        document.getElementById('status-message').textContent = `使用者ID: ${userId} | 載入資料中...`;
+                        
+                        // 3. Start real-time listeners after successful auth
+                        loadDataListeners();
+                        renderView(currentView);
+                    } else {
+                        // 4. Sign in if not authenticated
+                        await handleSignIn();
+                    }
+                });
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                document.getElementById('status-message').textContent = `錯誤: Firebase初始化失敗 (${error.message})`;
+            }
+        }
+
+        async function handleSignIn() {
+            try {
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                    console.log("Signed in with custom token.");
+                } else {
+                    await signInAnonymously(auth);
+                    console.log("Signed in anonymously.");
+                }
+            } catch (error) {
+                console.error("Authentication Error:", error);
+                // Fallback for Canvas environment where custom token might be delayed/unavailable
+                if (!auth.currentUser) {
+                    await signInAnonymously(auth);
+                }
+            }
+        }
+
+        function loadDataListeners() {
+            if (!isAuthReady || !userId) return;
+
+            // 1. Categories Listener (Real-time updates)
+            const categoriesColRef = collection(db, getCollectionPath('categories'));
+            onSnapshot(categoriesColRef, (snapshot) => {
+                categories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log("Categories loaded:", categories.length);
+                renderRecordView(); // Re-render to update category dropdown/list
+            }, (error) => {
+                console.error("Error loading categories:", error);
+            });
+
+            // 2. Expenses Listener (Real-time updates)
+            const expensesColRef = collection(db, getCollectionPath('expenses'));
+            onSnapshot(expensesColRef, (snapshot) => {
+                expenses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                console.log("Expenses loaded:", expenses.length);
+                // Update views that depend on expenses
+                if (currentView === 'record') renderRecordView();
+                if (currentView === 'report') renderReportView();
+            }, (error) => {
+                console.error("Error loading expenses:", error);
+            });
+
+            document.getElementById('status-message').textContent = `使用者ID: ${userId} | 資料同步中...`;
+        }
+
+        // --- Category and Budget Management ---
+
+        async function saveCategory() {
+            const nameInput = document.getElementById('new-category-name');
+            const budgetInput = document.getElementById('new-category-budget');
+            const name = nameInput.value.trim();
+            const budget = parseFloat(budgetInput.value) || 0;
+
+            if (!name) {
+                showAlert('輸入錯誤', '分類名稱不能為空。');
+                return;
+            }
+
+            try {
+                const existing = categories.find(c => c.name === name);
+                const categoriesColRef = collection(db, getCollectionPath('categories'));
+                
+                if (existing) {
+                    // Update existing category
+                    await updateDoc(doc(db, getCollectionPath('categories'), existing.id), { name, budget });
+                    showAlert('更新成功', `分類「${name}」的預算已更新為 ${budget}。`, 'text-indigo-600');
+                } else {
+                    // Add new category
+                    await addDoc(categoriesColRef, { name, budget });
+                    showAlert('新增成功', `已新增分類「${name}」。`, 'text-indigo-600');
+                }
+                
+                nameInput.value = '';
+                budgetInput.value = '';
+                document.getElementById('category-modal').classList.add('hidden');
+            } catch (e) {
+                console.error("Error saving category: ", e);
+                showAlert('資料錯誤', `儲存分類失敗：${e.message}`);
+            }
+        }
+
+        function renderCategoryList() {
+            const listEl = document.getElementById('category-list');
+            listEl.innerHTML = '';
+
+            categories.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hant')).forEach(cat => {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center p-3 bg-white rounded-lg shadow-sm border';
+                div.innerHTML = `
+                    <span class="font-semibold text-gray-800">${cat.name}</span>
+                    <span class="text-sm ${cat.budget > 0 ? 'text-indigo-500 font-medium' : 'text-gray-400'}">${cat.budget > 0 ? `預算: $${cat.budget.toFixed(0)}` : '無預算'}</span>
+                    <button data-id="${cat.id}" data-name="${cat.name}" data-budget="${cat.budget}" class="edit-cat-btn text-sm text-indigo-500 hover:text-indigo-700 ml-4">
+                        編輯
+                    </button>
+                    <button data-id="${cat.id}" class="delete-cat-btn text-sm text-red-500 hover:text-red-700 ml-2">
+                        刪除
+                    </button>
+                `;
+                listEl.appendChild(div);
+            });
+
+            // Attach event listeners for edit and delete
+            listEl.querySelectorAll('.edit-cat-btn').forEach(btn => {
+                btn.onclick = (e) => {
+                    document.getElementById('new-category-name').value = e.target.dataset.name;
+                    document.getElementById('new-category-budget').value = e.target.dataset.budget === '0' ? '' : e.target.dataset.budget;
+                    showAlert('提示', '請在上方輸入框中修改分類名稱或預算後，按「儲存分類」。', 'text-blue-500');
+                };
+            });
+            listEl.querySelectorAll('.delete-cat-btn').forEach(btn => {
+                btn.onclick = () => deleteCategory(btn.dataset.id);
+            });
+        }
+        
+        async function deleteCategory(id) {
+            const cat = categories.find(c => c.id === id);
+            if (!cat) return;
+
+            // 由於禁止使用 confirm()，點擊按鈕即視為確認刪除，並彈出通知。
+            try {
+                await deleteDoc(doc(db, getCollectionPath('categories'), id));
+                showAlert('刪除成功', `已刪除分類「${cat.name}」。`, 'text-green-600');
+            } catch (e) {
+                console.error("Error deleting category: ", e);
+                showAlert('資料錯誤', `刪除分類失敗：${e.message}`);
+            }
+        }
+
+        // --- Expense Management ---
+
+        async function saveExpense() {
+            const amount = parseFloat(document.getElementById('expense-amount').value);
+            const date = document.getElementById('expense-date').value;
+            const method = document.getElementById('expense-method').value;
+            const categoryId = document.getElementById('expense-category').value;
+            const note = document.getElementById('expense-note').value.trim();
+
+            if (isNaN(amount) || amount <= 0) {
+                showAlert('輸入錯誤', '請輸入有效的金額。');
+                return;
+            }
+            if (!date || !method || !categoryId) {
+                showAlert('輸入錯誤', '請填寫所有必填欄位。');
+                return;
+            }
+
+            const expenseData = {
+                amount: amount,
+                date: date, // YYYY-MM-DD string
+                method: method,
+                category_id: categoryId,
+                note: note,
+                timestamp: Date.now()
+            };
+
+            try {
+                if (expenseToEdit) {
+                    // Update existing expense
+                    await updateDoc(doc(db, getCollectionPath('expenses'), expenseToEdit.id), expenseData);
+                    showAlert('更新成功', '支出紀錄已更新。', 'text-indigo-600');
+                    // Reset edit state
+                    expenseToEdit = null;
+                    document.getElementById('save-expense-btn').textContent = '紀錄支出';
+                } else {
+                    // Add new expense
+                    await addDoc(collection(db, getCollectionPath('expenses')), expenseData);
+                    showAlert('紀錄成功', '新的支出紀錄已儲存。', 'text-green-600');
+                }
+
+                // Check budget and clear form
+                checkBudgetAndAlert(categoryId);
+                clearExpenseForm();
+
+            } catch (e) {
+                console.error("Error saving expense: ", e);
+                showAlert('資料錯誤', `儲存紀錄失敗：${e.message}`);
+            }
+        }
+
+        function clearExpenseForm() {
+            document.getElementById('expense-amount').value = '';
+            document.getElementById('expense-date').value = formatDate(new Date());
+            document.getElementById('expense-method').value = paymentMethods[0].value;
+            document.getElementById('expense-category').value = categories.length > 0 ? categories[0].id : '';
+            document.getElementById('expense-note').value = '';
+            expenseToEdit = null;
+            document.getElementById('save-expense-btn').textContent = '紀錄支出';
+        }
+
+        function editExpense(expense) {
+            expenseToEdit = expense;
+            document.getElementById('expense-amount').value = expense.amount;
+            document.getElementById('expense-date').value = expense.date;
+            document.getElementById('expense-method').value = expense.method;
+            document.getElementById('expense-category').value = expense.category_id;
+            document.getElementById('expense-note').value = expense.note || '';
+            document.getElementById('save-expense-btn').textContent = '更新紀錄';
+            // Scroll to the top for easy editing
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        async function deleteExpense(id) {
+            // 由於禁止使用 confirm()，點擊按鈕即視為確認刪除，並彈出通知。
+            try {
+                await deleteDoc(doc(db, getCollectionPath('expenses'), id));
+                showAlert('刪除成功', '支出紀錄已刪除。', 'text-red-500');
+                if (expenseToEdit && expenseToEdit.id === id) {
+                    clearExpenseForm();
+                }
+            } catch (e) {
+                console.error("Error deleting expense: ", e);
+                showAlert('資料錯誤', `刪除紀錄失敗：${e.message}`);
+            }
+        }
+
+        // --- Budget Alert Logic ---
+        
+        function checkBudgetAndAlert(categoryId) {
+            const category = categories.find(c => c.id === categoryId);
+            if (!category || !category.budget || category.budget <= 0) return;
+
+            const now = new Date();
+            const startOfMonth = formatDate(new Date(now.getFullYear(), now.getMonth(), 1));
+            // Get last day of the current month
+            const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            const endFormatted = formatDate(lastDayOfMonth);
+
+
+            const currentMonthExpenses = expenses.filter(e => {
+                return e.category_id === categoryId && e.date >= startOfMonth && e.date <= endFormatted;
+            });
+
+            const currentSpent = currentMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
+            const budget = category.budget;
+            const percentage = (currentSpent / budget) * 100;
+
+            let title = '預算狀態';
+            let message = '';
+            let color = 'text-green-600';
+
+            if (percentage >= 100) {
+                title = '預算超支警示！';
+                message = `分類「${category.name}」本月已花費 $${currentSpent.toFixed(2)}，已超出預算 $${budget.toFixed(0)}！`;
+                color = 'text-red-600';
+            } else if (percentage >= 90) {
+                title = '預算高度警示';
+                message = `分類「${category.name}」已花費 $${currentSpent.toFixed(2)}，達到預算 (${budget.toFixed(0)}) 的 90%！`;
+                color = 'text-yellow-600';
+            } else if (percentage >= 70) {
+                title = '預算中度警示';
+                message = `分類「${category.name}」已花費 $${currentSpent.toFixed(2)}，達到預算 (${budget.toFixed(0)}) 的 70%。`;
+                color = 'text-orange-500';
+            } else if (percentage >= 50) {
+                title = '預算低度警示';
+                message = `分類「${category.name}」已花費 $${currentSpent.toFixed(2)}，已達預算 (${budget.toFixed(0)}) 的 50%。`;
+                color = 'text-blue-500';
+            } else {
+                return; // No alert needed
+            }
+
+            showAlert(title, message, color);
+        }
+
+        // --- Calculator Logic ---
+
+        function setupCalculator() {
+            document.getElementById('open-calc-btn').onclick = () => {
+                calculatorTargetInput = document.getElementById('expense-amount');
+                document.getElementById('calc-display').value = calculatorTargetInput.value || '0';
+                document.getElementById('calculator-modal').classList.remove('hidden');
+            };
+
+            document.querySelectorAll('.calc-btn').forEach(btn => {
+                btn.onclick = (e) => handleCalculatorInput(e.target.dataset.value);
+            });
+
+            document.getElementById('calc-ok').onclick = () => {
+                const displayValue = document.getElementById('calc-display').value;
+                try {
+                    // Final evaluation before transfer
+                    // Use a safe calculation method instead of direct eval, though eval is simple for this context
+                    const finalResult = Function(`'use strict'; return (${displayValue.replace(/x/g, '*')})`)().toString();
+                    calculatorTargetInput.value = parseFloat(finalResult).toFixed(2); // Format to 2 decimal places
+                    document.getElementById('calculator-modal').classList.add('hidden');
+                } catch {
+                    showAlert('計算錯誤', '請輸入有效的數學表達式。');
+                }
+            };
+        }
+
+        function handleCalculatorInput(val) {
+            const display = document.getElementById('calc-display');
+            let current = display.value;
+
+            if (val === 'C') {
+                display.value = '0';
+            } else if (val === '=') {
+                try {
+                    // Use a safe function for evaluation
+                    display.value = Function(`'use strict'; return (${current.replace(/x/g, '*')})`)().toString();
+                } catch {
+                    display.value = '錯誤';
+                }
+            } else if (val === '.') {
+                // Prevent multiple dots in one number
+                const parts = current.split(/[\+\-\*\/]/);
+                if (!parts[parts.length - 1].includes('.')) {
+                    display.value = current + val;
+                }
+            } else if (['+', '-', '*', '/'].includes(val)) {
+                // Prevent double operators
+                if (['+', '-', '*', '/'].includes(current.slice(-1))) {
+                    display.value = current.slice(0, -1) + val;
+                } else {
+                    display.value = current + val;
+                }
+            } else {
+                // Number input
+                if (current === '0' || current === '錯誤') {
+                    display.value = val;
+                } else {
+                    display.value = current + val;
+                }
+            }
+        }
+
+        // --- Rendering Views ---
+
+        function renderView(view) {
+            currentView = view;
+            const contentArea = document.getElementById('content-area');
+            
+            // Update navigation styles
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-indigo-500', 'text-white', 'hover:bg-indigo-600');
+                btn.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            });
+            document.getElementById(`nav-${view}`).classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            document.getElementById(`nav-${view}`).classList.add('bg-indigo-500', 'text-white', 'hover:bg-indigo-600');
+
+
+            contentArea.innerHTML = '';
+            if (!isAuthReady) {
+                contentArea.innerHTML = '<p class="text-center text-gray-500 mt-10">等待載入 Firebase 認證...</p>';
+                return;
+            }
+
+            if (view === 'record') {
+                renderRecordView();
+            } else if (view === 'report') {
+                renderReportView();
+            }
+        }
+
+        function renderRecordView() {
+            if (currentView !== 'record') return;
+
+            const contentArea = document.getElementById('content-area');
+            contentArea.innerHTML = `
+                <div class="bg-white p-6 rounded-xl shadow-lg mb-6">
+                    <h2 class="text-xl font-bold text-gray-700 mb-4 border-b pb-2">新增支出紀錄</h2>
+                    
+                    <form id="expense-form" class="space-y-4">
+                        <!-- Amount and Calculator -->
+                        <div>
+                            <label for="expense-amount" class="block text-sm font-medium text-gray-700">金額</label>
+                            <div class="mt-1 flex space-x-2">
+                                <input type="number" id="expense-amount" placeholder="0.00" step="0.01" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500" required>
+                                <button type="button" id="open-calc-btn" class="bg-indigo-100 text-indigo-700 p-3 rounded-lg font-semibold hover:bg-indigo-200 transition">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Date -->
+                        <div>
+                            <label for="expense-date" class="block text-sm font-medium text-gray-700">日期</label>
+                            <input type="date" id="expense-date" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg" required>
+                        </div>
+                        
+                        <!-- Payment Method -->
+                        <div>
+                            <label for="expense-method" class="block text-sm font-medium text-gray-700">支付工具</label>
+                            <select id="expense-method" class="mt-1 block w-full p-3 border border-gray-300 rounded-lg">
+                                ${paymentMethods.map(m => `<option value="${m.value}">${m.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        
+                        <!-- Category -->
+                        <div>
+                            <label for="expense-category" class="block text-sm font-medium text-gray-700">支出分類</label>
+                            <div class="flex mt-1 space-x-2">
+                                <select id="expense-category" class="flex-grow p-3 border border-gray-300 rounded-lg" required>
+                                    ${categories.length > 0 
+                                        ? categories.map(c => `<option value="${c.id}">${c.name} ${c.budget > 0 ? `($${c.budget.toFixed(0)}預算)` : ''}</option>`).join('')
+                                        : '<option value="">請先新增分類</option>'
+                                    }
+                                </select>
+                                <button type="button" id="open-cat-modal" class="bg-blue-500 text-white p-3 rounded-lg font-semibold hover:bg-blue-600 transition text-sm whitespace-nowrap">
+                                    管理分類
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Note (Optional) -->
+                        <div>
+                            <label for="expense-note" class="block text-sm font-medium text-gray-700">備註 (可選)</label>
+                            <input type="text" id="expense-note" placeholder="紀錄細節..." class="mt-1 block w-full p-3 border border-gray-300 rounded-lg">
+                        </div>
+
+                        <button type="submit" id="save-expense-btn" class="w-full bg-green-600 text-white py-3 rounded-lg font-bold text-lg shadow-md hover:bg-green-700 transition">
+                            紀錄支出
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Expense List -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold text-gray-700 mb-4 border-b pb-2">本月支出紀錄 (可編輯/刪除)</h2>
+                    <div id="expense-list-container" class="space-y-3 max-h-96 overflow-y-auto custom-scroll">
+                        <p id="no-expenses" class="text-center text-gray-500 hidden">本月尚無支出紀錄。</p>
+                        <!-- List will be rendered here -->
+                    </div>
+                </div>
+            `;
+            
+            // Re-setup initial values and event listeners after rendering
+            document.getElementById('expense-date').value = formatDate(new Date());
+            document.getElementById('expense-form').onsubmit = (e) => { e.preventDefault(); saveExpense(); };
+            document.getElementById('open-cat-modal').onclick = () => {
+                document.getElementById('category-modal').classList.remove('hidden');
+                renderCategoryList();
+            };
+            document.getElementById('save-category-btn').onclick = saveCategory;
+            setupCalculator();
+            renderExpenseList();
+        }
+
+        function renderExpenseList() {
+            const container = document.getElementById('expense-list-container');
+            const noExpensesEl = document.getElementById('no-expenses');
+
+            if (!container) return;
+
+            const now = new Date();
+            const currentYearMonth = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
+
+            const monthlyExpenses = expenses
+                .filter(e => e.date.startsWith(currentYearMonth))
+                .sort((a, b) => b.timestamp - a.timestamp); // Sort by newest first
+
+            container.innerHTML = '';
+
+            if (monthlyExpenses.length === 0) {
+                noExpensesEl.classList.remove('hidden');
+                return;
+            } else {
+                noExpensesEl.classList.add('hidden');
+            }
+
+            monthlyExpenses.forEach(exp => {
+                const category = categories.find(c => c.id === exp.category_id);
+                const categoryName = category ? category.name : '未分類';
+                const method = paymentMethods.find(m => m.value === exp.method)?.name || exp.method;
+
+                const item = document.createElement('div');
+                item.className = 'flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 border-b last:border-b-0 bg-gray-50 hover:bg-gray-100 rounded-lg';
+                item.innerHTML = `
+                    <div class="flex-grow mb-2 sm:mb-0">
+                        <p class="text-xl font-bold text-red-600">$${exp.amount.toFixed(2)}</p>
+                        <p class="text-sm text-gray-600">${categoryName} / ${method} | ${exp.date}</p>
+                        ${exp.note ? `<p class="text-xs text-gray-400 italic">${exp.note}</p>` : ''}
+                    </div>
+                    <div class="flex space-x-2">
+                        <button class="edit-btn bg-yellow-400 text-white p-2 rounded-lg text-sm font-semibold hover:bg-yellow-500 transition" data-id="${exp.id}">
+                            編輯
+                        </button>
+                        <button class="delete-btn bg-red-500 text-white p-2 rounded-lg text-sm font-semibold hover:bg-red-600 transition" data-id="${exp.id}">
+                            刪除
+                        </button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+
+            // Attach listeners
+            container.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.onclick = () => {
+                    const exp = expenses.find(e => e.id === btn.dataset.id);
+                    if (exp) editExpense(exp);
+                };
+            });
+            container.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.onclick = () => deleteExpense(btn.dataset.id);
+            });
+        }
+
+        function renderReportView() {
+            if (currentView !== 'report') return;
+
+            const contentArea = document.getElementById('content-area');
+            contentArea.innerHTML = `
+                <div class="bg-white p-6 rounded-xl shadow-lg mb-6">
+                    <h2 class="text-xl font-bold text-gray-700 mb-4 border-b pb-2">開銷統計報告</h2>
+                    
+                    <div class="flex space-x-4 mb-4">
+                        <button id="filter-month" class="report-filter-btn bg-indigo-500 text-white p-2 rounded-lg font-semibold hover:bg-indigo-600 transition">本月</button>
+                        <button id="filter-quarter" class="report-filter-btn bg-gray-200 text-gray-700 p-2 rounded-lg font-semibold hover:bg-gray-300 transition">本季</button>
+                        <button id="filter-year" class="report-filter-btn bg-gray-200 text-gray-700 p-2 rounded-lg font-semibold hover:bg-gray-300 transition">本年</button>
+                    </div>
+                    
+                    <div id="report-summary" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                        <!-- Summary cards here -->
+                    </div>
+
+                    <h3 class="text-lg font-bold text-gray-700 mb-3">分類詳細</h3>
+                    <div id="report-details" class="space-y-3 custom-scroll max-h-96">
+                        <!-- Detailed breakdown here -->
+                    </div>
+                </div>
+            `;
+            
+            // Setup filtering and initial report (default to month)
+            document.getElementById('filter-month').onclick = () => generateReport('month');
+            document.getElementById('filter-quarter').onclick = () => generateReport('quarter');
+            document.getElementById('filter-year').onclick = () => generateReport('year');
+            
+            generateReport('month'); // Initial load
+        }
+
+        function generateReport(period) {
+            const now = new Date();
+            let startDate, endDate;
+            let reportTitle = '';
+
+            // 1. Determine Date Range
+            if (period === 'month') {
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                reportTitle = `${now.getFullYear()}年${now.getMonth() + 1}月`;
+            } else if (period === 'quarter') {
+                const quarter = Math.floor(now.getMonth() / 3);
+                startDate = new Date(now.getFullYear(), quarter * 3, 1);
+                endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+                reportTitle = `${now.getFullYear()}年第${quarter + 1}季`;
+            } else if (period === 'year') {
+                startDate = new Date(now.getFullYear(), 0, 1);
+                endDate = new Date(now.getFullYear(), 11, 31);
+                reportTitle = `${now.getFullYear()}年`;
+            }
+
+            // Update button visual state
+            document.querySelectorAll('.report-filter-btn').forEach(btn => {
+                btn.classList.remove('bg-indigo-500', 'text-white', 'hover:bg-indigo-600');
+                btn.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            });
+            document.getElementById(`filter-${period}`).classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            document.getElementById(`filter-${period}`).classList.add('bg-indigo-500', 'text-white', 'hover:bg-indigo-600');
+
+
+            const startFormatted = formatDate(startDate);
+            const endFormatted = formatDate(endDate);
+
+            // 2. Filter Expenses
+            const filteredExpenses = expenses.filter(e => {
+                return e.date >= startFormatted && e.date <= endFormatted;
+            });
+            
+            // 3. Aggregate Data
+            let totalSpent = 0;
+            const categoryTotals = {};
+            const methodTotals = {};
+
+            filteredExpenses.forEach(exp => {
+                totalSpent += exp.amount;
+                
+                // Aggregate by Category
+                const catName = categories.find(c => c.id === exp.category_id)?.name || '未分類';
+                categoryTotals[catName] = (categoryTotals[catName] || { spent: 0, budget: categories.find(c => c.id === exp.category_id)?.budget || 0, count: 0 });
+                categoryTotals[catName].spent += exp.amount;
+                categoryTotals[catName].count += 1;
+
+                // Aggregate by Method
+                const method = paymentMethods.find(m => m.value === exp.method)?.name || exp.method;
+                methodTotals[method] = (methodTotals[method] || 0) + exp.amount;
+            });
+
+            // 4. Render Summary Cards
+            const summaryEl = document.getElementById('report-summary');
+            summaryEl.innerHTML = `
+                <div class="bg-indigo-50 p-4 rounded-xl shadow-md border-l-4 border-indigo-500">
+                    <p class="text-sm font-medium text-indigo-600">${reportTitle}總開銷</p>
+                    <p class="text-2xl font-bold text-indigo-900">$${totalSpent.toFixed(2)}</p>
+                </div>
+                <div class="bg-gray-50 p-4 rounded-xl shadow-md border-l-4 border-gray-500">
+                    <p class="text-sm font-medium text-gray-600">總交易筆數</p>
+                    <p class="text-2xl font-bold text-gray-900">${filteredExpenses.length} 筆</p>
+                </div>
+                <div class="bg-yellow-50 p-4 rounded-xl shadow-md border-l-4 border-yellow-500">
+                    <p class="text-sm font-medium text-yellow-600">平均每日開銷</p>
+                    <p class="text-2xl font-bold text-yellow-900">
+                        $${(totalSpent / ((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24) + 1)).toFixed(2)}
+                    </p>
+                </div>
+            `;
+
+            // 5. Render Detailed Breakdown (Category)
+            const detailsEl = document.getElementById('report-details');
+            detailsEl.innerHTML = `
+                <h4 class="font-semibold text-gray-700 mt-4 mb-2">按支付工具分類:</h4>
+                <div class="space-y-1 mb-4 p-2 bg-gray-50 rounded-lg">
+                    ${Object.entries(methodTotals).map(([method, amount]) => `
+                        <p class="flex justify-between text-sm text-gray-600 border-b border-dashed pb-1">
+                            <span>${method}</span>
+                            <span class="font-medium text-indigo-700">$${amount.toFixed(2)} (${(amount / totalSpent * 100).toFixed(1)}%)</span>
+                        </p>
+                    `).join('')}
+                </div>
+
+                <h4 class="font-semibold text-gray-700 mt-4 mb-2">按支出分類 (預算對比):</h4>
+                ${Object.entries(categoryTotals).sort(([, a], [, b]) => b.spent - a.spent).map(([catName, data]) => {
+                    const percentage = data.budget > 0 ? (data.spent / data.budget) * 100 : 0;
+                    const color = percentage >= 100 ? 'bg-red-500' : percentage >= 90 ? 'bg-yellow-500' : percentage > 0 ? 'bg-indigo-500' : 'bg-gray-300';
+                    const budgetText = data.budget > 0 ? `預算: $${data.budget.toFixed(0)}` : '無預算';
+                    const statusText = data.budget > 0 
+                        ? (percentage >= 100 ? `<span class="text-red-600 font-bold">超支 ${Math.abs(data.spent - data.budget).toFixed(2)}</span>` : `<span class="text-green-600">${percentage.toFixed(0)}%</span>`)
+                        : '';
+                    
+                    return `
+                        <div class="p-3 bg-white rounded-lg shadow-sm border">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="font-semibold text-gray-800">${catName}</span>
+                                <span class="text-lg font-bold text-red-600">$${data.spent.toFixed(2)}</span>
+                            </div>
+                            <div class="flex justify-between text-xs text-gray-500 mb-2">
+                                <span>${budgetText}</span>
+                                ${statusText}
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div class="h-2.5 rounded-full ${color}" style="width: ${Math.min(percentage, 100)}%"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            `;
+        }
+
+        // --- Window Load and Event Setup ---
+
+        window.onload = () => {
+            initFirebase();
+            
+            // Setup navigation
+            document.getElementById('nav-record').addEventListener('click', () => renderView('record'));
+            document.getElementById('nav-report').addEventListener('click', () => renderView('report'));
+
+            // Initial view load will happen after Firebase auth is complete
+        };
+    </script>
+
+</body>
+</html>
