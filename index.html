@@ -260,6 +260,7 @@
         import { getFirestore, collection, addDoc, query, where, onSnapshot, doc, setDoc, getDoc, updateDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
         // --- Firebase Config ---
+        // NOTE: The actual __firebase_config and __app_id variables from the environment should be used in a production environment.
         const firebaseConfig = {
             apiKey: "AIzaSyBJcP4HOoVFnbzLT-jdnrW1AtAWXVfjEaM",
             authDomain: "my-expense-tracker-574dd.firebaseapp.com",
@@ -269,6 +270,7 @@
             appId: "1:514938495732:web:bb3529eca4f2db547b74a1",
             measurementId: "G-CDTCB6MFZ3"
         };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Use provided app ID
 
         // Initialize Firebase
         const app = initializeApp(firebaseConfig);
@@ -282,7 +284,6 @@
         let transactions = [];
         let editMode = false;
         let currentEditId = null;
-        const appId = "my-expense-app"; // Unique ID for artifact path
 
         // --- Stats State ---
         let statsMode = 'month'; // 'month' or 'year'
@@ -356,7 +357,7 @@
             try {
                 await signInWithEmailAndPassword(auth, email, pass);
             } catch (error) {
-                alert("登入失敗: " + error.message);
+                showAlert("登入失敗", error.message, "red");
             }
         };
 
@@ -368,7 +369,7 @@
                 // Create default settings for new user
                 await initDefaultSettings();
             } catch (error) {
-                alert("註冊失敗: " + error.message);
+                showAlert("註冊失敗", error.message, "red");
             }
         };
 
@@ -406,534 +407,749 @@
 
         async function loadSettings() {
             const docRef = doc(db, getUserPath(), "config", "settings");
-            const docSnap = await getDoc(docRef);
+            try {
+                const docSnap = await getDoc(docRef);
 
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                categories = data.categories || [];
-                paymentMethods = data.paymentMethods || [];
-            } else {
-                await initDefaultSettings();
-                categories = [{ name: "飲食", budget: 6000 }];
-                paymentMethods = ["現金"];
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    categories = data.categories || [];
+                    paymentMethods = data.paymentMethods || [];
+                } else {
+                    await initDefaultSettings();
+                    // Load the newly created defaults after init
+                    const newDocSnap = await getDoc(docRef);
+                    const newData = newDocSnap.data();
+                    categories = newData.categories || [];
+                    paymentMethods = newData.paymentMethods || [];
+                }
+            } catch (error) {
+                 console.error("Error loading settings:", error);
+                 showAlert("設定檔載入失敗", "請嘗試重新登入。", "red");
+                 // Fallback to minimal defaults if DB fails
+                 categories = [{ name: "飲食", budget: 6000 }];
+                 paymentMethods = ["現金"];
             }
             renderSettings();
         }
+        
+        async function saveSettings() {
+             try {
+                await setDoc(doc(db, getUserPath(), "config", "settings"), {
+                    categories: categories,
+                    paymentMethods: paymentMethods
+                });
+                // Rerender settings and immediately check all transactions against new budgets
+                renderSettings();
+                renderTransactions(); 
+                showAlert("儲存成功", "分類與支付方式已更新。", "green");
+            } catch (error) {
+                 console.error("Error saving settings:", error);
+                 showAlert("儲存失敗", "無法更新設定檔。", "red");
+            }
+        }
+
 
         function subscribeTransactions() {
+            // The query listens to the transactions collection for the current user.
             const q = query(collection(db, getUserPath(), "data")); 
             
             onSnapshot(q, (snapshot) => {
                 transactions = [];
                 snapshot.forEach((doc) => {
-                    transactions.push({ id: doc.id, ...doc.data() });
+                    // Firestore timestamp to JS Date
+                    const data = doc.data();
+                    const date = data.date && data.date.toDate ? data.date.toDate() : new Date(data.date);
+                    transactions.push({ id: doc.id, ...data, date: date });
                 });
-                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                // Sort transactions by date (descending)
+                transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
+                
                 renderTransactions();
-                updateMonthTotal();
-                if(statsMode) renderStats(); // Refresh stats if data changes
+                // Rerender stats if the stats view is active
+                if (!document.getElementById('stats-view').classList.contains('hidden')) {
+                    renderStats();
+                }
             }, (error) => {
-                console.error("Error fetching transactions: ", error);
+                console.error("Error subscribing to transactions:", error);
+                showAlert("資料連線失敗", "無法同步交易紀錄。", "red");
             });
         }
 
-        // --- UI Rendering ---
+        // --- Rendering Functions ---
+
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(amount);
+        }
+
+        function formatDate(date) {
+            return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+        }
+
+        function calculateMonthlySummary() {
+            const currentMonth = new Date(statsDate.getFullYear(), statsDate.getMonth(), 1);
+            let total = 0;
+            
+            transactions.forEach(t => {
+                const tDate = new Date(t.date.getFullYear(), t.date.getMonth(), 1);
+                if (tDate.getTime() === currentMonth.getTime()) {
+                    total += t.amount;
+                }
+            });
+
+            document.getElementById('month-total').innerText = formatCurrency(total);
+        }
 
         function renderTransactions() {
             const list = document.getElementById('transaction-list');
             list.innerHTML = '';
             
             if (transactions.length === 0) {
-                list.innerHTML = `<div class="text-center text-gray-400 mt-10">尚無紀錄</div>`;
+                list.innerHTML = `
+                    <div class="p-6 text-center text-gray-500">
+                        <i class="fa-solid fa-receipt text-3xl mb-2"></i>
+                        <p>本月還沒有紀錄喔！</p>
+                        <p class="text-sm mt-1">點擊右下角 + 開始記帳</p>
+                    </div>
+                `;
+                document.getElementById('month-total').innerText = formatCurrency(0);
                 return;
             }
 
-            // Group by Date for better readability
-            let lastDate = '';
-            
-            transactions.forEach(t => {
-                if(t.date !== lastDate) {
-                    const dateHeader = document.createElement('div');
-                    dateHeader.className = "bg-gray-100 px-4 py-1 text-xs text-gray-500 font-bold sticky top-0";
-                    dateHeader.innerText = t.date;
-                    list.appendChild(dateHeader);
-                    lastDate = t.date;
+            // Group transactions by date
+            const grouped = transactions.reduce((acc, t) => {
+                const dateKey = formatDate(t.date);
+                if (!acc[dateKey]) {
+                    acc[dateKey] = [];
+                }
+                acc[dateKey].push(t);
+                return acc;
+            }, {});
+
+            let totalExpense = 0;
+            const today = new Date();
+            const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+            Object.keys(grouped).sort((a, b) => new Date(b).getTime() - new Date(a).getTime()).forEach(dateKey => {
+                const dayTransactions = grouped[dateKey];
+                const dateObj = dayTransactions[0].date;
+                
+                // Only consider transactions in the current month for the Home View total
+                if (dateObj.getTime() >= currentMonthStart.getTime()) {
+                    dayTransactions.forEach(t => totalExpense += t.amount);
                 }
 
-                const colorClass = getCategoryColor(t.category);
-                const el = document.createElement('div');
-                el.className = "bg-white p-3 border-b flex justify-between items-center hover:bg-gray-50 cursor-pointer";
-                el.onclick = () => editTransaction(t);
-                el.innerHTML = `
-                    <div class="flex items-center gap-3">
-                        <div class="${colorClass} w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm">
-                            ${t.category.substring(0, 1)}
+                // Calculate daily total
+                const dailyTotal = dayTransactions.reduce((sum, t) => sum + t.amount, 0);
+
+                // Date header
+                const dayName = dateObj.getDay() === 0 ? '週日' : `週${'一二三四五六'[dateObj.getDay() - 1]}`;
+                const isToday = formatDate(dateObj) === formatDate(new Date());
+
+                list.innerHTML += `
+                    <div class="flex justify-between items-center p-3 text-sm border-b border-t mt-[-1px] bg-gray-200 sticky top-[68px] z-[5]">
+                        <div class="font-bold text-gray-600">
+                            ${dateObj.getMonth() + 1}月${dateObj.getDate()}日 
+                            <span class="${isToday ? 'text-blue-600' : 'text-gray-500'} ml-1">(${dayName})</span>
                         </div>
-                        <div>
-                            <div class="font-bold text-gray-800">${t.category}</div>
-                            <div class="text-xs text-gray-500">${t.payment} ${t.note ? '· ' + t.note : ''}</div>
+                        <div class="font-bold text-red-500">
+                            ${formatCurrency(dailyTotal)}
                         </div>
                     </div>
-                    <div class="font-bold text-gray-800">$${t.amount}</div>
                 `;
-                list.appendChild(el);
+
+                // Transaction items
+                dayTransactions.forEach(t => {
+                    const color = getCategoryColor(t.category);
+                    list.innerHTML += `
+                        <div class="flex justify-between items-center p-4 border-b bg-white hover:bg-gray-50 active:bg-gray-100 transition" onclick="openModal('${t.id}')">
+                            <div class="flex items-center space-x-3 truncate">
+                                <div class="w-2 h-2 rounded-full ${color.split(' ')[0].replace('-100', '-600')} flex-shrink-0"></div>
+                                <div class="flex flex-col truncate">
+                                    <div class="font-bold text-gray-800 truncate">${t.note || t.category}</div>
+                                    <div class="text-xs text-gray-500 mt-0.5 truncate">
+                                        ${t.category} 
+                                        <span class="ml-1 text-gray-400">| ${t.payment || '未設定'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="text-right flex flex-col items-end flex-shrink-0 ml-4">
+                                <div class="font-bold text-red-500">${formatCurrency(t.amount)}</div>
+                                <div class="text-xs text-gray-400 mt-0.5">${t.date.getHours().toString().padStart(2, '0')}:${t.date.getMinutes().toString().padStart(2, '0')}</div>
+                            </div>
+                        </div>
+                    `;
+                });
             });
+
+            // Update main view total
+            document.getElementById('month-total').innerText = formatCurrency(totalExpense);
+            checkBudgetAlerts(totalExpense);
+        }
+
+        // --- Budget Alert Logic ---
+        function checkBudgetAlerts(monthlyTotal) {
+            // Find the category of the last recorded expense (most recent transaction)
+            if (transactions.length === 0) return;
+            
+            const mostRecentTransaction = transactions[0];
+            const recentCategory = mostRecentTransaction.category;
+            const categoryObj = categories.find(c => c.name === recentCategory);
+            
+            if (!categoryObj) return;
+
+            const categoryBudget = categoryObj.budget;
+
+            // 1. Check if category budget is 0 or less (no alert necessary if budget is 0/not set)
+            if (categoryBudget <= 0) return;
+
+            // Calculate category spending for the current month
+            const currentMonth = new Date(mostRecentTransaction.date.getFullYear(), mostRecentTransaction.date.getMonth(), 1);
+            const categorySpending = transactions
+                .filter(t => t.category === recentCategory)
+                .filter(t => new Date(t.date.getFullYear(), t.date.getMonth(), 1).getTime() === currentMonth.getTime())
+                .reduce((sum, t) => sum + t.amount, 0);
+
+            const percentage = (categorySpending / categoryBudget) * 100;
+            
+            let alertMsg = null;
+            let icon = '⚠️';
+            let title = '預算提醒';
+
+            if (percentage >= 100) {
+                alertMsg = `您在【${recentCategory}】分類的支出已達預算 ${formatCurrency(categoryBudget)}，超出 ${formatCurrency(categorySpending - categoryBudget)}！`;
+                icon = '🚨';
+                title = '預算超支！';
+            } else if (percentage >= 75 && percentage < 100) {
+                alertMsg = `您在【${recentCategory}】分類的支出已達預算的 75% (${formatCurrency(categoryBudget)})，請留意。`;
+                icon = '🔔';
+            } else if (percentage >= 50 && percentage < 75) {
+                // Not showing an alert for 50% for simplicity unless it's a new transaction
+            } else {
+                return; // No alert needed
+            }
+
+            if (alertMsg) {
+                // Only show alert if the recent transaction caused the threshold to be crossed
+                showAlert(title, alertMsg, icon === '🚨' ? 'red' : 'orange');
+            }
         }
 
         function renderSettings() {
-            // Categories
             const catList = document.getElementById('category-settings-list');
             catList.innerHTML = '';
-            categories.forEach((c, index) => {
-                const colorClass = getCategoryColor(c.name);
-                const div = document.createElement('div');
-                div.className = "flex justify-between items-center bg-white p-3 rounded shadow-sm border";
-                div.innerHTML = `
-                    <div class="flex items-center gap-2">
-                        <div class="${colorClass} w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">
-                            ${c.name.substring(0, 1)}
+            
+            categories.forEach((cat, index) => {
+                const color = getCategoryColor(cat.name);
+                
+                // Calculate monthly spending for this category
+                const today = new Date();
+                const currentMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                const spending = transactions
+                    .filter(t => t.category === cat.name)
+                    .filter(t => new Date(t.date.getFullYear(), t.date.getMonth(), 1).getTime() === currentMonth.getTime())
+                    .reduce((sum, t) => sum + t.amount, 0);
+
+                // Budget Bar calculation
+                let percentage = (cat.budget > 0) ? Math.min(100, (spending / cat.budget) * 100) : 0;
+                let barColor = 'bg-blue-400';
+                if (percentage >= 100) {
+                    barColor = 'bg-red-500';
+                    percentage = 100; // Always show full bar for 100%+
+                } else if (percentage >= 75) {
+                    barColor = 'bg-orange-400';
+                }
+                
+                // Handle budget 0 (show spending vs 0)
+                const budgetDisplay = cat.budget > 0 ? formatCurrency(cat.budget) : "無預算";
+                const barWidth = cat.budget > 0 ? `${percentage}%` : '0%';
+                
+                const item = document.createElement('div');
+                item.className = 'bg-white p-3 rounded-lg shadow-sm border border-gray-200';
+                item.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
+                        <div class="flex items-center">
+                            <span class="${color} px-2 py-0.5 rounded-full text-xs font-bold mr-3">${cat.name}</span>
                         </div>
-                        <div>
-                            <span class="font-bold text-gray-700">${c.name}</span>
-                            <span class="text-xs text-gray-500 block">預算: $${c.budget}</span>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm font-semibold text-gray-700">${formatCurrency(spending)}</span>
+                            <span class="text-xs text-gray-500">/ ${budgetDisplay}</span>
+                            <button onclick="editCategory(${index})" class="text-gray-400 hover:text-blue-500 p-1"><i class="fa-solid fa-pen text-sm"></i></button>
+                            <button onclick="deleteCategory(${index})" class="text-gray-400 hover:text-red-500 p-1"><i class="fa-solid fa-trash-alt text-sm"></i></button>
                         </div>
                     </div>
-                    <button onclick="deleteCategory(${index})" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-trash"></i></button>
+                    <div class="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+                        <div class="stats-bar h-full rounded-full ${barColor}" style="width: ${barWidth};"></div>
+                    </div>
+                    <div class="text-xs text-right mt-1 text-gray-500">
+                        ${cat.budget > 0 ? (spending > cat.budget ? `超出 ${formatCurrency(spending - cat.budget)}` : `剩餘 ${formatCurrency(cat.budget - spending)}`) : '無預算設定'}
+                    </div>
                 `;
-                catList.appendChild(div);
+                catList.appendChild(item);
             });
 
-            // Payments
+            // Payment methods
             const payList = document.getElementById('payment-settings-list');
             payList.innerHTML = '';
-            paymentMethods.forEach((p, index) => {
-                const span = document.createElement('span');
-                span.className = "bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-2";
-                span.innerHTML = `${p} <button onclick="deletePayment(${index})" class="text-gray-500 hover:text-red-500">×</button>`;
-                payList.appendChild(span);
-            });
-        }
-
-        function updateMonthTotal() {
-            const today = new Date();
-            const currentMonth = today.toISOString().slice(0, 7); // YYYY-MM
-            
-            const total = transactions
-                .filter(t => t.date.startsWith(currentMonth))
-                .reduce((sum, t) => sum + Number(t.amount), 0);
-            
-            document.getElementById('month-total').innerText = `$${total}`;
-        }
-
-        // --- Stats Feature Logic ---
-        
-        window.setStatsMode = (mode) => {
-            statsMode = mode;
-            const btnMonth = document.getElementById('btn-mode-month');
-            const btnYear = document.getElementById('btn-mode-year');
-            
-            if(mode === 'month') {
-                btnMonth.classList.add('bg-white', 'shadow', 'text-blue-600');
-                btnMonth.classList.remove('text-gray-500');
-                btnYear.classList.remove('bg-white', 'shadow', 'text-blue-600');
-                btnYear.classList.add('text-gray-500');
-            } else {
-                btnYear.classList.add('bg-white', 'shadow', 'text-blue-600');
-                btnYear.classList.remove('text-gray-500');
-                btnMonth.classList.remove('bg-white', 'shadow', 'text-blue-600');
-                btnMonth.classList.add('text-gray-500');
-            }
-            renderStats();
-        }
-
-        window.shiftStatsDate = (dir) => {
-            if(statsMode === 'month') {
-                statsDate.setMonth(statsDate.getMonth() + dir);
-            } else {
-                statsDate.setFullYear(statsDate.getFullYear() + dir);
-            }
-            renderStats();
-        }
-
-        function renderStats() {
-            const label = document.getElementById('stats-date-label');
-            const totalDisplay = document.getElementById('stats-total');
-            const list = document.getElementById('stats-list');
-            
-            // Format Label
-            if(statsMode === 'month') {
-                const y = statsDate.getFullYear();
-                const m = statsDate.getMonth() + 1;
-                label.innerText = `${y}年 ${m}月`;
-            } else {
-                label.innerText = `${statsDate.getFullYear()}年`;
-            }
-
-            // Filter Data
-            const targetPrefix = statsMode === 'month' 
-                ? statsDate.toISOString().slice(0, 7) // YYYY-MM
-                : statsDate.toISOString().slice(0, 4); // YYYY
-
-            const filteredData = transactions.filter(t => t.date.startsWith(targetPrefix));
-            const total = filteredData.reduce((sum, t) => sum + Number(t.amount), 0);
-            totalDisplay.innerText = `$${total}`;
-
-            // Group by Category
-            const catMap = {};
-            filteredData.forEach(t => {
-                catMap[t.category] = (catMap[t.category] || 0) + Number(t.amount);
+            paymentMethods.forEach((method, index) => {
+                 payList.innerHTML += `
+                    <div class="flex items-center bg-blue-50 border border-blue-200 rounded-full pr-3 py-1 pl-4 text-sm text-blue-800 font-medium space-x-1">
+                        <span>${method}</span>
+                        <button onclick="deletePaymentMethod(${index})" class="text-blue-400 hover:text-red-500 ml-1">
+                            <i class="fa-solid fa-times text-xs"></i>
+                        </button>
+                    </div>
+                `;
             });
 
-            // Convert to Array & Sort
-            const sortedCats = Object.entries(catMap)
-                .map(([name, amount]) => ({ name, amount }))
-                .sort((a, b) => b.amount - a.amount);
+            // Re-render modal category options
+            renderModalCategoryOptions();
+            renderModalPaymentOptions();
+        }
 
-            list.innerHTML = '';
-            if(sortedCats.length === 0) {
-                list.innerHTML = `<div class="text-center text-gray-400 py-4">此期間無支出紀錄</div>`;
+        // --- Category Management ---
+
+        window.addCategory = () => {
+            const nameInput = document.getElementById('new-cat-name');
+            const budgetInput = document.getElementById('new-cat-budget');
+            const name = nameInput.value.trim();
+            const budget = parseInt(budgetInput.value) || 0; // Default to 0
+
+            if (!name) {
+                showAlert("輸入錯誤", "分類名稱不能為空。", "orange");
+                return;
+            }
+            if (categories.some(c => c.name === name)) {
+                showAlert("重複分類", "此分類名稱已存在。", "orange");
                 return;
             }
 
-            sortedCats.forEach(c => {
-                const percent = total > 0 ? (c.amount / total) * 100 : 0;
-                
-                // --- Color Logic based on Budget ---
-                let colorClass = 'bg-blue-500';
-                const catSetting = categories.find(cat => cat.name === c.name);
-                
-                if (catSetting) {
-                    if (catSetting.budget > 0) {
-                        const ratio = c.amount / catSetting.budget;
-                        if (ratio >= 1) colorClass = 'bg-red-500';
-                        else if (ratio >= 0.9) colorClass = 'bg-orange-500';
-                        else if (ratio >= 0.7) colorClass = 'bg-yellow-400';
-                    } else if (c.amount > 0) {
-                        // Budget is 0 but has expense -> Over budget (Red)
-                        colorClass = 'bg-red-500';
-                    }
+            categories.push({ name, budget });
+            nameInput.value = '';
+            budgetInput.value = '';
+            saveSettings();
+        };
+
+        window.editCategory = (index) => {
+            const cat = categories[index];
+            const newBudget = prompt(`編輯【${cat.name}】預算：`, cat.budget);
+
+            if (newBudget !== null) {
+                const budgetValue = parseInt(newBudget);
+                if (!isNaN(budgetValue) && budgetValue >= 0) {
+                    categories[index].budget = budgetValue;
+                    saveSettings();
+                } else if (newBudget.trim() === "") {
+                    // Treat empty string as 0
+                    categories[index].budget = 0;
+                    saveSettings();
+                } else {
+                    showAlert("輸入錯誤", "預算必須是有效的非負數字。", "red");
                 }
-                
-                const div = document.createElement('div');
-                div.className = "bg-white p-3 rounded-lg shadow-sm";
-                div.innerHTML = `
-                    <div class="flex justify-between items-end mb-1">
-                        <span class="font-bold text-gray-700">${c.name}</span>
-                        <div class="text-right">
-                            <span class="font-bold text-gray-800">$${c.amount}</span>
-                            <span class="text-xs text-gray-500 ml-1">(${percent.toFixed(1)}%)</span>
-                        </div>
-                    </div>
-                    <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                        <div class="${colorClass} h-2 rounded-full stats-bar" style="width: ${percent}%"></div>
-                    </div>
-                `;
-                list.appendChild(div);
-            });
-        }
+            }
+        };
+
+        window.deleteCategory = (index) => {
+            const catName = categories[index].name;
+            if (confirm(`確定要刪除分類【${catName}】嗎？\n(此操作不會刪除相關交易紀錄)`)) {
+                categories.splice(index, 1);
+                saveSettings();
+            }
+        };
+
+        // --- Payment Management ---
+        window.addPaymentMethod = () => {
+            const input = document.getElementById('new-pay-method');
+            const method = input.value.trim();
+
+            if (!method) {
+                showAlert("輸入錯誤", "支付方式名稱不能為空。", "orange");
+                return;
+            }
+            if (paymentMethods.includes(method)) {
+                showAlert("重複方式", "此支付方式已存在。", "orange");
+                return;
+            }
+
+            paymentMethods.push(method);
+            input.value = '';
+            saveSettings();
+        };
+
+        window.deletePaymentMethod = (index) => {
+            const methodName = paymentMethods[index];
+            if (confirm(`確定要刪除支付方式【${methodName}】嗎？`)) {
+                paymentMethods.splice(index, 1);
+                saveSettings();
+            }
+        };
+
 
         // --- Calculator Logic ---
-        let currentCalc = "0";
-        let isResult = false;
+        let expression = '';
+        let result = 0;
 
-        window.calcInput = (val) => {
-            if (currentCalc === "0" || isResult) {
-                currentCalc = val;
-                isResult = false;
-            } else {
-                currentCalc += val;
+        window.calcInput = (value) => {
+            // If the last operation was '=', reset expression
+            if (expression.includes('=')) {
+                expression = '';
+                result = 0;
             }
-            updateDisplay();
+            
+            // Prevent leading zero if not followed by a decimal
+            if (expression === '0' && value !== '.') {
+                expression = value;
+            } else if (expression.endsWith('0') && ['+', '-', '*', '/'].some(op => expression.slice(-2).includes(op))) {
+                 // Replace single zero after an operator
+                expression = expression.slice(0, -1) + value;
+            } else {
+                expression += value;
+            }
+            updateCalcDisplay();
         };
 
         window.calcOp = (op) => {
-            const lastChar = currentCalc.slice(-1);
-            if (['+', '-', '*', '/'].includes(lastChar)) return;
-            currentCalc += op;
-            isResult = false;
-            updateDisplay();
+            if (expression === '') return;
+            // Evaluate current expression before adding new operator
+            if (expression.includes('=')) {
+                 // Use the last result as the starting point for the new expression
+                expression = result.toString();
+            }
+            
+            // Remove trailing operator if any
+            const lastChar = expression.slice(-1);
+            if (['+', '-', '*', '/'].includes(lastChar)) {
+                expression = expression.slice(0, -1);
+            }
+            
+            expression += op;
+            updateCalcDisplay();
         };
 
         window.calcClear = () => {
-            currentCalc = "0";
-            calcExpr.innerText = "";
-            updateDisplay();
+            expression = '';
+            result = 0;
+            updateCalcDisplay();
         };
+        
+        // This function is the core of the calculator display logic
+        function updateCalcDisplay() {
+            calcExpr.innerText = expression.replace(/\*/g, '×').replace(/\//g, '÷').replace(/=/g, '');
+            
+            if (expression.includes('=')) {
+                calcDisplay.innerText = formatCurrency(result).replace('TWD', '').trim();
+                return;
+            }
 
-        function evaluateCalc() {
             try {
-                // simple evaluation
-                const result = Function('"use strict";return (' + currentCalc + ')')();
-                currentCalc = String(Math.round(result * 100) / 100); // Round to 2 decimals
-                isResult = true;
-                updateDisplay();
-                return Number(currentCalc);
+                // Determine the part of the expression to evaluate (only up to the last operator)
+                let evalExpr = expression;
+                let lastOperatorIndex = Math.max(
+                    evalExpr.lastIndexOf('+'),
+                    evalExpr.lastIndexOf('-'),
+                    evalExpr.lastIndexOf('*'),
+                    evalExpr.lastIndexOf('/')
+                );
+
+                if (lastOperatorIndex > -1 && lastOperatorIndex < evalExpr.length - 1) {
+                    // If an operator exists and is not the last character, evaluate the whole thing
+                    result = eval(evalExpr.replace(/÷/g, '/').replace(/×/g, '*'));
+                } else if (lastOperatorIndex === evalExpr.length - 1) {
+                    // If the last character is an operator, evaluate only the part before it
+                    let tempExpr = evalExpr.slice(0, -1);
+                    if (tempExpr) {
+                        result = eval(tempExpr.replace(/÷/g, '/').replace(/×/g, '*'));
+                    } else {
+                        result = 0;
+                    }
+                } else if (evalExpr) {
+                    // No operators, just a number
+                    result = parseFloat(evalExpr);
+                } else {
+                    result = 0;
+                }
+                
+                // Show the current numerical input or the intermediate result
+                calcDisplay.innerText = formatCurrency(result).replace('TWD', '').trim();
+
             } catch (e) {
-                calcDisplay.innerText = "Error";
-                return 0;
+                calcDisplay.innerText = '錯誤';
+                result = 0;
             }
         }
 
-        function updateDisplay() {
-            // Replace * with × and / with ÷ for display
-            let displayStr = currentCalc.replace(/\*/g, '×').replace(/\//g, '÷');
-            calcDisplay.innerText = displayStr;
+        // --- Transaction Modal & CRUD ---
+
+        function renderModalCategoryOptions() {
+            const select = document.getElementById('input-category');
+            select.innerHTML = categories.map(cat => `<option value="${cat.name}">${cat.name}</option>`).join('');
         }
 
-        // --- Modal & Form Logic ---
+        function renderModalPaymentOptions() {
+            const select = document.getElementById('input-payment');
+            select.innerHTML = paymentMethods.map(method => `<option value="${method}">${method}</option>`).join('');
+        }
 
-        window.openModal = () => {
+        window.openModal = (transactionId = null) => {
             document.getElementById('input-modal').classList.remove('hidden');
-            document.getElementById('modal-title').innerText = "新增支出";
+            document.getElementById('add-btn').classList.add('hidden');
             
-            // Reset fields
-            currentCalc = "0";
-            calcExpr.innerText = "";
-            updateDisplay();
-            document.getElementById('input-date').valueAsDate = new Date();
-            document.getElementById('input-note').value = "";
+            // Reset calculator state
+            calcClear();
             
-            renderModalChoices();
-            editMode = false;
-            currentEditId = null;
-            
-            const existingDelBtn = document.getElementById('btn-delete-trans');
-            if(existingDelBtn) existingDelBtn.remove();
+            // Set default date to today
+            document.getElementById('input-date').value = formatDate(new Date());
+
+            if (transactionId) {
+                editMode = true;
+                currentEditId = transactionId;
+                document.getElementById('modal-title').innerText = '編輯支出';
+                
+                const transaction = transactions.find(t => t.id === transactionId);
+                if (transaction) {
+                    // Populate fields for editing
+                    document.getElementById('input-date').value = formatDate(transaction.date);
+                    document.getElementById('input-category').value = transaction.category || (categories[0] ? categories[0].name : '');
+                    document.getElementById('input-payment').value = transaction.payment || (paymentMethods[0] ? paymentMethods[0] : '');
+                    document.getElementById('input-note').value = transaction.note || '';
+                    
+                    // Set calculator display to the existing amount
+                    expression = transaction.amount.toString();
+                    result = transaction.amount;
+                    updateCalcDisplay();
+                } else {
+                    showAlert("錯誤", "找不到要編輯的交易紀錄。", "red");
+                    closeModal();
+                }
+            } else {
+                // New transaction mode
+                editMode = false;
+                currentEditId = null;
+                document.getElementById('modal-title').innerText = '新增支出';
+                
+                // Set default selections
+                document.getElementById('input-category').value = categories[0] ? categories[0].name : '';
+                document.getElementById('input-payment').value = paymentMethods[0] ? paymentMethods[0] : '';
+                document.getElementById('input-note').value = '';
+            }
         };
 
         window.closeModal = () => {
             document.getElementById('input-modal').classList.add('hidden');
+            document.getElementById('add-btn').classList.remove('hidden');
         };
-
-        window.editTransaction = (t) => {
-            openModal();
-            document.getElementById('modal-title').innerText = "編輯支出";
-            editMode = true;
-            currentEditId = t.id;
-
-            currentCalc = String(t.amount);
-            updateDisplay();
-            document.getElementById('input-date').value = t.date;
-            document.getElementById('input-note').value = t.note || "";
-            document.getElementById('input-payment').value = t.payment;
-            
-            // Set Select Value
-            document.getElementById('input-category').value = t.category;
-
-            // Add Delete Button
-            const header = document.querySelector('#input-modal .flex.justify-between');
-            if (!document.getElementById('btn-delete-trans')) {
-                const delBtn = document.createElement('button');
-                delBtn.id = 'btn-delete-trans';
-                delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
-                delBtn.className = "text-red-500 p-2 mr-2";
-                delBtn.onclick = deleteCurrentTransaction;
-                header.insertBefore(delBtn, header.lastElementChild);
-            }
-        };
-
-        function renderModalChoices() {
-            // Categories - Render as Select Options
-            const select = document.getElementById('input-category');
-            select.innerHTML = '';
-            categories.forEach((c) => {
-                const opt = document.createElement('option');
-                opt.value = c.name;
-                opt.innerText = c.name;
-                select.appendChild(opt);
-            });
-
-            // Payment Methods
-            const paySelect = document.getElementById('input-payment');
-            paySelect.innerHTML = '';
-            paymentMethods.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p;
-                opt.innerText = p;
-                paySelect.appendChild(opt);
-            });
-        }
-
-        // --- Core Business Logic ---
 
         window.saveTransaction = async () => {
-            const amount = evaluateCalc(); 
-            if (amount <= 0) {
-                alert("金額必須大於 0");
-                return;
-            }
-
-            const date = document.getElementById('input-date').value;
-            const payment = document.getElementById('input-payment').value;
-            const note = document.getElementById('input-note').value;
-            const category = document.getElementById('input-category').value; // Get from select
-
-            if (!category) {
-                alert("請選擇分類 (若無分類請先至設定新增)");
-                return;
-            }
-
-            const data = {
-                date,
-                amount,
-                category,
-                payment,
-                note,
-                timestamp: new Date().toISOString()
-            };
-
-            showLoading(true);
+            // 1. Final evaluation of the expression
+            let finalAmount;
             try {
-                // Check Budget Alert BEFORE saving (or parallel)
-                await checkBudget(category, amount, date);
-
-                if (editMode && currentEditId) {
-                    await updateDoc(doc(db, getUserPath(), "data", currentEditId), data);
+                if (expression.includes('=')) {
+                    finalAmount = result;
                 } else {
-                    await addDoc(collection(db, getUserPath(), "data"), data);
+                    finalAmount = eval(expression.replace(/÷/g, '/').replace(/×/g, '*'));
                 }
-                closeModal();
-            } catch (error) {
-                console.error(error);
-                alert("儲存失敗");
-            }
-            showLoading(false);
-        };
+                
+                if (isNaN(finalAmount) || finalAmount <= 0) {
+                     showAlert("輸入錯誤", "請輸入有效的金額 (大於 $0$ )。", "orange");
+                    return;
+                }
+                finalAmount = Math.round(finalAmount); // Round to nearest dollar
 
-        window.deleteCurrentTransaction = async () => {
-            if (!confirm("確定要刪除此紀錄嗎?")) return;
-            showLoading(true);
-            try {
-                await deleteDoc(doc(db, getUserPath(), "data", currentEditId));
-                closeModal();
-            } catch (err) {
-                alert("刪除失敗");
-            }
-            showLoading(false);
-        };
-
-        // Budget Checking Logic
-        async function checkBudget(categoryName, newAmount, dateStr) {
-            const catSettings = categories.find(c => c.name === categoryName);
-            // Allow check even if budget is 0 (which means limit is 0)
-            if (!catSettings) return; 
-
-            const budget = Number(catSettings.budget);
-            
-            // If budget is 0, any amount triggers red alert immediately
-            if (budget === 0) {
-                 showAlert("預算提醒", `「${categoryName}」未設定預算或預算為 0，已超支！`, "red");
-                 return;
-            }
-
-            const monthPrefix = dateStr.slice(0, 7); // YYYY-MM
-            
-            // Calculate existing total for this month/category
-            let currentUsed = transactions
-                .filter(t => t.category === categoryName && t.date.startsWith(monthPrefix) && t.id !== currentEditId)
-                .reduce((sum, t) => sum + Number(t.amount), 0);
-            
-            const totalAfter = currentUsed + newAmount;
-            const ratio = totalAfter / budget;
-            
-            let alertData = null;
-            if (ratio > 1) {
-                alertData = { title: "已超支!", msg: `本月「${categoryName}」已超支 ${(ratio*100).toFixed(0)}%!`, color: "red" };
-            } else if (ratio >= 0.9) {
-                alertData = { title: "預算告急", msg: `本月「${categoryName}」已達預算 90%`, color: "orange" };
-            } else if (ratio >= 0.7) {
-                alertData = { title: "注意開銷", msg: `本月「${categoryName}」已達預算 70%`, color: "yellow" };
-            } else if (ratio >= 0.5 && ratio < 0.55) { 
-                alertData = { title: "溫馨提醒", msg: `本月「${categoryName}」已達預算 50%`, color: "blue" };
-            }
-
-            if (alertData) {
-                showAlert(alertData.title, alertData.msg, alertData.color);
-            }
-        }
-
-        function showAlert(title, msg, colorType) {
-            const modal = document.getElementById('alert-modal');
-            const icon = document.getElementById('alert-icon');
-            const t = document.getElementById('alert-title');
-            const m = document.getElementById('alert-msg');
-
-            t.innerText = title;
-            m.innerText = msg;
-            
-            if(colorType === 'red') { icon.innerText = '🚨'; t.className = "text-xl font-bold mb-2 text-red-600"; }
-            else if(colorType === 'orange') { icon.innerText = '⚠️'; t.className = "text-xl font-bold mb-2 text-orange-600"; }
-            else { icon.innerText = '💡'; t.className = "text-xl font-bold mb-2 text-blue-600"; }
-
-            modal.classList.remove('hidden');
-        }
-
-        // --- Settings Logic ---
-        window.addCategory = async () => {
-            const name = document.getElementById('new-cat-name').value.trim();
-            const budgetVal = document.getElementById('new-cat-budget').value;
-            
-            if(!name) return alert("請輸入分類名稱");
-            
-            // Default to 0 if empty
-            const budget = budgetVal ? Number(budgetVal) : 0;
-
-            categories.push({ name, budget });
-            await saveSettings();
-            document.getElementById('new-cat-name').value = '';
-            document.getElementById('new-cat-budget').value = '';
-            renderSettings();
-        };
-
-        window.deleteCategory = async (index) => {
-            if(!confirm("確定刪除此分類?")) return;
-            categories.splice(index, 1);
-            await saveSettings();
-            renderSettings();
-        };
-
-        window.addPaymentMethod = async () => {
-            const name = document.getElementById('new-pay-method').value.trim();
-            if(!name) return;
-            paymentMethods.push(name);
-            await saveSettings();
-            document.getElementById('new-pay-method').value = '';
-            renderSettings();
-        };
-
-        window.deletePayment = async (index) => {
-            if(!confirm("確定刪除此支付方式?")) return;
-            paymentMethods.splice(index, 1);
-            await saveSettings();
-            renderSettings();
-        };
-
-        async function saveSettings() {
-            showLoading(true);
-            try {
-                await updateDoc(doc(db, getUserPath(), "config", "settings"), {
-                    categories,
-                    paymentMethods
-                });
             } catch (e) {
-                console.error(e);
-                alert("設定儲存失敗");
+                showAlert("計算錯誤", "無法計算金額，請檢查輸入。", "red");
+                return;
             }
-            showLoading(false);
+
+            // 2. Gather other data
+            const dateStr = document.getElementById('input-date').value;
+            const category = document.getElementById('input-category').value;
+            const payment = document.getElementById('input-payment').value;
+            const note = document.getElementById('input-note').value.trim();
+
+            if (!dateStr || !category) {
+                showAlert("資料不完整", "日期與分類為必填項。", "orange");
+                return;
+            }
+
+            const transactionData = {
+                amount: finalAmount,
+                date: new Date(dateStr), // Stored as Date object
+                category: category,
+                payment: payment,
+                note: note,
+                timestamp: new Date() // For sorting/tracking
+            };
+            
+            closeModal();
+            showLoading(true);
+
+            // 3. Save to Firestore
+            try {
+                if (editMode && currentEditId) {
+                    await updateDoc(doc(db, getUserPath(), "data", currentEditId), transactionData);
+                    showAlert("更新成功", "交易紀錄已更新。", "green");
+                } else {
+                    await addDoc(collection(db, getUserPath(), "data"), transactionData);
+                    showAlert("儲存成功", "新的交易紀錄已加入。", "green");
+                }
+            } catch (e) {
+                console.error("Error saving transaction:", e);
+                showAlert("儲存失敗", "無法儲存交易紀錄。", "red");
+            } finally {
+                showLoading(false);
+            }
+        };
+        
+        window.deleteTransaction = async (id) => {
+            if (confirm("確定要永久刪除這筆交易紀錄嗎？")) {
+                showLoading(true);
+                try {
+                    await deleteDoc(doc(db, getUserPath(), "data", id));
+                    showAlert("刪除成功", "交易紀錄已移除。", "green");
+                } catch (e) {
+                    console.error("Error deleting transaction:", e);
+                    showAlert("刪除失敗", "無法移除交易紀錄。", "red");
+                } finally {
+                    showLoading(false);
+                }
+            }
+        };
+
+        // --- Stats View Logic ---
+        window.setStatsMode = (mode) => {
+            statsMode = mode;
+            document.getElementById('btn-mode-month').classList.remove('bg-white', 'shadow', 'text-blue-600');
+            document.getElementById('btn-mode-month').classList.add('text-gray-500');
+            document.getElementById('btn-mode-year').classList.remove('bg-white', 'shadow', 'text-blue-600');
+            document.getElementById('btn-mode-year').classList.add('text-gray-500');
+            
+            if (mode === 'month') {
+                document.getElementById('btn-mode-month').classList.add('bg-white', 'shadow', 'text-blue-600');
+            } else {
+                document.getElementById('btn-mode-year').classList.add('bg-white', 'shadow', 'text-blue-600');
+            }
+            // Reset statsDate to the current period when switching mode
+            statsDate = new Date(); 
+            renderStats();
+        };
+
+        window.shiftStatsDate = (amount) => {
+            if (statsMode === 'month') {
+                statsDate.setMonth(statsDate.getMonth() + amount);
+            } else {
+                statsDate.setFullYear(statsDate.getFullYear() + amount);
+            }
+            renderStats();
+        };
+
+        function renderStats() {
+            const statsList = document.getElementById('stats-list');
+            statsList.innerHTML = '';
+            
+            // 1. Determine the relevant period and total spending
+            let dateLabel, filteredTransactions;
+            let totalSpending = 0;
+
+            if (statsMode === 'month') {
+                const year = statsDate.getFullYear();
+                const month = statsDate.getMonth();
+                dateLabel = `${year} 年 ${month + 1} 月`;
+                
+                filteredTransactions = transactions.filter(t => 
+                    t.date.getFullYear() === year && t.date.getMonth() === month
+                );
+            } else { // 'year' mode
+                const year = statsDate.getFullYear();
+                dateLabel = `${year} 年`;
+                
+                filteredTransactions = transactions.filter(t => 
+                    t.date.getFullYear() === year
+                );
+            }
+
+            document.getElementById('stats-date-label').innerText = dateLabel;
+            
+            // Group by Category
+            const categoryTotals = filteredTransactions.reduce((acc, t) => {
+                totalSpending += t.amount;
+                acc[t.category] = (acc[t.category] || 0) + t.amount;
+                return acc;
+            }, {});
+
+            document.getElementById('stats-total').innerText = formatCurrency(totalSpending);
+
+            // Handle no transactions
+            if (totalSpending === 0) {
+                statsList.innerHTML = `
+                    <div class="p-6 text-center text-gray-500 bg-white rounded-xl shadow-sm">
+                        <i class="fa-solid fa-chart-line text-3xl mb-2"></i>
+                        <p>此期間沒有支出紀錄</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // 2. Render Category Stats
+            const categoryNames = Object.keys(categoryTotals).sort((a, b) => categoryTotals[b] - categoryTotals[a]);
+            
+            categoryNames.forEach(catName => {
+                const spending = categoryTotals[catName];
+                const percentage = (spending / totalSpending) * 100;
+                const catSetting = categories.find(c => c.name === catName) || { budget: 0 };
+                const budget = catSetting.budget;
+                
+                // Budget Bar calculation for Stats View (vs current period budget)
+                let budgetPercentage = (budget > 0) ? Math.min(100, (spending / budget) * 100) : 0;
+                let barColor = 'bg-blue-500';
+                let subTitle = formatCurrency(spending);
+                
+                if (budget > 0) {
+                    subTitle += ` / ${formatCurrency(budget)}`;
+                    if (budgetPercentage >= 100) {
+                        barColor = 'bg-red-500';
+                    } else if (budgetPercentage >= 75) {
+                        barColor = 'bg-orange-500';
+                    }
+                } else {
+                    budgetPercentage = (percentage > 0) ? Math.min(100, percentage) : 0;
+                    barColor = getCategoryColor(catName).split(' ')[0].replace('-100', '-600');
+                }
+                
+                // Determine bar width
+                const barWidth = `${budget > 0 ? budgetPercentage : percentage}%`;
+
+                statsList.innerHTML += `
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex flex-col">
+                                <span class="font-bold text-lg text-gray-800">${catName}</span>
+                                <span class="text-sm text-gray-500">${subTitle}</span>
+                            </div>
+                            <div class="text-right flex flex-col items-end">
+                                <span class="text-xl font-bold text-red-600">${formatCurrency(spending)}</span>
+                                <span class="text-xs font-semibold text-gray-500">${percentage.toFixed(1)}%</span>
+                            </div>
+                        </div>
+                        <div class="h-3 w-full bg-gray-200 rounded-full overflow-hidden">
+                            <div class="stats-bar h-full rounded-full ${barColor}" style="width: ${barWidth};"></div>
+                        </div>
+                        ${budget > 0 ? `<div class="text-xs text-right mt-1 text-gray-500">${spending > budget ? `超支 ${formatCurrency(spending - budget)}` : `剩餘 ${formatCurrency(budget - spending)}`}</div>` : `<div class="text-xs text-right mt-1 text-gray-500">此分類無預算設定</div>`}
+                    </div>
+                `;
+            });
         }
 
-        // --- Navigation ---
+        // --- UI Utility Functions ---
+
         window.switchView = (view) => {
             const main = document.getElementById('main-view');
             const stats = document.getElementById('stats-view');
             const set = document.getElementById('settings-view');
-            
+            const headerTitle = document.getElementById('header-title');
+            const addBtn = document.getElementById('add-btn');
+
             const btnHome = document.getElementById('nav-home');
             const btnStats = document.getElementById('nav-stats');
             const btnSet = document.getElementById('nav-settings');
-            
-            const headerTitle = document.getElementById('header-title');
-            const addBtn = document.getElementById('add-btn');
 
             // Reset all
             main.classList.add('hidden');
@@ -967,6 +1183,33 @@
         function showLoading(show) {
             if (show) loadingOverlay.classList.remove('hidden');
             else loadingOverlay.classList.add('hidden');
+        }
+
+        /**
+         * Shows a custom alert modal.
+         * @param {string} title - The title of the alert.
+         * @param {string} message - The main message.
+         * @param {string} type - 'green', 'red', 'orange', or an icon string like '🚨'.
+         */
+        function showAlert(title, message, type = 'orange') {
+            const modal = document.getElementById('alert-modal');
+            const iconElement = document.getElementById('alert-icon');
+            const titleElement = document.getElementById('alert-title');
+            const msgElement = document.getElementById('alert-msg');
+
+            let icon = '';
+            switch(type) {
+                case 'green': icon = '✅'; break;
+                case 'red': icon = '❌'; break;
+                case 'orange': icon = '⚠️'; break;
+                default: icon = type; // Allow passing custom icon like '🚨'
+            }
+
+            iconElement.innerText = icon;
+            titleElement.innerText = title;
+            msgElement.innerText = message;
+            
+            modal.classList.remove('hidden');
         }
     </script>
 </body>
