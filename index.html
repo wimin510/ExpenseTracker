@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>跨平台記帳程式</title>
+    <title>跨平台記帳程式 (Email 登入)</title>
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入 Lucide icons (用於圖示) -->
@@ -28,20 +28,54 @@
     <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50">
         <div class="flex flex-col items-center">
             <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-emerald-500"></div>
-            <p class="mt-4 text-lg text-gray-700">正在初始化 Firebase 與匿名登入...</p>
+            <p class="mt-4 text-lg text-gray-700">正在初始化服務...</p>
         </div>
     </div>
 
-    <div id="app-container" class="hidden max-w-lg mx-auto bg-white shadow-xl rounded-2xl p-6 sm:p-8">
-        <header class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-800 flex items-center">
-                <i data-lucide="wallet-2" class="w-8 h-8 text-emerald-500 mr-2"></i>
-                我的匿名記帳本
-            </h1>
-            <p id="user-id-display" class="text-sm text-gray-500 mt-1 break-all"></p>
-            <div class="mt-2 p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-lg text-sm">
-                您的資料已安全儲存在您的 Firebase 匿名帳戶中。
+    <!-- 登入/註冊區塊 -->
+    <div id="auth-section" class="max-w-md mx-auto bg-white shadow-xl rounded-2xl p-6 sm:p-8 mt-12 hidden">
+        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">
+            Email 登入/註冊
+        </h2>
+        <form id="auth-form">
+            <div class="mb-4">
+                <label for="auth-email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" id="auth-email" placeholder="您的電子郵件" required
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150">
             </div>
+            <div class="mb-6">
+                <label for="auth-password" class="block text-sm font-medium text-gray-700 mb-1">密碼 (至少 6 位元)</label>
+                <input type="password" id="auth-password" placeholder="設定您的密碼" required
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150">
+            </div>
+            
+            <div class="flex space-x-4">
+                <button type="button" id="login-btn"
+                        class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-[1.01]">
+                    登入
+                </button>
+                <button type="button" id="signup-btn"
+                        class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-[1.01]">
+                    註冊並登入
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- 應用程式主區塊 -->
+    <div id="app-container" class="hidden max-w-lg mx-auto bg-white shadow-xl rounded-2xl p-6 sm:p-8">
+        <header class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800 flex items-center">
+                    <i data-lucide="wallet-2" class="w-8 h-8 text-emerald-500 mr-2"></i>
+                    我的私人記帳本
+                </h1>
+                <p id="user-email-display" class="text-sm text-gray-500 mt-1 break-all"></p>
+            </div>
+            <button id="signout-btn" class="flex items-center text-sm text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition duration-150">
+                <i data-lucide="log-out" class="w-4 h-4 mr-1"></i>
+                登出
+            </button>
         </header>
 
         <!-- 總餘額區塊 -->
@@ -90,8 +124,14 @@
     <script type="module">
         // --- 1. 引入 Firebase 模組 ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, addDoc, deleteDoc, onSnapshot, collection, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { 
+            getAuth, 
+            signInWithEmailAndPassword, 
+            createUserWithEmailAndPassword, 
+            signOut,
+            onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, deleteDoc, onSnapshot, collection, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // 設定 Firestore 紀錄等級 (Debug 用)
@@ -107,41 +147,46 @@
             appId: "1:514938495732:web:bb3529eca4f2db547b74a1",
             measurementId: "G-CDTCB6MFZ3"
         };
-
+        
         // --- 2. 存取環境提供的全域變數 ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         
-        // 優先使用環境變數，如果沒有，則使用預設配置
+        // 優先使用環境變數
         let firebaseConfig = defaultFirebaseConfig;
         if (typeof __firebase_config !== 'undefined' && __firebase_config) {
             try {
-                // 如果環境變數存在，嘗試解析它
                 firebaseConfig = JSON.parse(__firebase_config);
             } catch (e) {
                 console.error("解析 __firebase_config 失敗，使用預設配置。", e);
-                // 保持使用 defaultFirebaseConfig
             }
         }
-        
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
         // UI 元素
         const loadingOverlay = document.getElementById('loading-overlay');
         const appContainer = document.getElementById('app-container');
+        const authSection = document.getElementById('auth-section');
         const balanceElement = document.getElementById('balance');
         const listElement = document.getElementById('transactions-list');
-        const form = document.getElementById('transaction-form');
+        const transactionForm = document.getElementById('transaction-form');
         const descriptionInput = document.getElementById('description');
         const amountInput = document.getElementById('amount');
         const emptyState = document.getElementById('empty-state');
-        const userIdDisplay = document.getElementById('user-id-display');
+        const userEmailDisplay = document.getElementById('user-email-display');
+        const signoutBtn = document.getElementById('signout-btn');
         const messageBox = document.getElementById('message-box');
+        
+        // Auth UI 元素
+        const authEmailInput = document.getElementById('auth-email');
+        const authPasswordInput = document.getElementById('auth-password');
+        const loginBtn = document.getElementById('login-btn');
+        const signupBtn = document.getElementById('signup-btn');
 
         let db;
         let auth;
-        let userId = 'unknown'; // 預設值
+        let currentUserId = null; // 現在直接使用 Firebase 登入後的 UID
+        let unsubscribeListener = null; // 用來儲存 onSnapshot 的取消訂閱函式
 
-        // --- 3. 輔助函式：顯示訊息彈窗 (取代 alert) ---
+        // --- 3. 輔助函式：顯示訊息彈窗 ---
         function showMessage(message, isError = false) {
             messageBox.textContent = message;
             messageBox.className = `fixed bottom-4 right-4 p-3 rounded-xl shadow-2xl transition-all duration-500 transform ${isError ? 'bg-red-600' : 'bg-emerald-500'} ${isError ? 'scale-105' : 'scale-100'}`;
@@ -152,88 +197,156 @@
                 setTimeout(() => {
                     messageBox.style.display = 'none';
                     messageBox.style.opacity = '1'; // Reset for next use
-                }, 500);
+                }, 300);
             }, 3000);
         }
 
-        // --- 4. 初始化 Firebase 與匿名登入 ---
-        async function initializeAppAndAuth() {
+        // --- 4. 初始化 Firebase 服務 (已更名避免與 import 的 initializeApp 衝突) ---
+        function initializeServices() {
             try {
-                // 由於我們已提供 defaultFirebaseConfig 備用，此處不再需要檢查
-                // if (!firebaseConfig) { throw new Error("Firebase 設定檔遺失。"); }
-
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
-
-                // 執行登入
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                    console.log("使用自訂 Token 登入成功。");
-                } else {
-                    await signInAnonymously(auth);
-                    console.log("使用匿名登入成功。");
-                }
-
-                // 取得使用者 ID
-                userId = auth.currentUser?.uid || 'anonymous-user';
-                userIdDisplay.textContent = `使用者 ID (匿名): ${userId}`;
-                
-                // 啟動資料監聽
-                startDataListener();
-
-                // 隱藏載入畫面，顯示應用程式
-                loadingOverlay.classList.add('hidden');
-                appContainer.classList.remove('hidden');
-                
-                // 確保 Lucide icons 正確渲染
-                lucide.createIcons();
-
+                startAuthListener();
             } catch (error) {
-                console.error("Firebase 初始化或登入失敗:", error);
+                console.error("Firebase 初始化失敗:", error);
                 loadingOverlay.classList.add('hidden');
-                appContainer.classList.remove('hidden');
-                userIdDisplay.textContent = "登入失敗，無法使用資料庫功能。";
-                // 顯示一般錯誤訊息，避免再次提到「設定檔遺失」
                 showMessage(`錯誤：Firebase 連線失敗。${error.message}`, true); 
             }
         }
-
+        
         // --- 5. 交易資料庫路徑設定 ---
         function getCollectionPath(uid) {
             // 私人資料路徑: /artifacts/{appId}/users/{userId}/expenses
             return `artifacts/${appId}/users/${uid}/expenses`;
         }
+        
+        // --- 6. 登入狀態監聽器 ---
+        function startAuthListener() {
+            onAuthStateChanged(auth, (user) => {
+                loadingOverlay.classList.add('hidden');
 
-        // --- 6. 即時資料監聽與渲染 ---
-        function startDataListener() {
-            if (!db || userId === 'unknown') {
+                if (user) {
+                    // 使用者已登入
+                    currentUserId = user.uid;
+                    userEmailDisplay.textContent = `已登入: ${user.email}`;
+
+                    authSection.classList.add('hidden');
+                    appContainer.classList.remove('hidden');
+                    
+                    // 啟動資料監聽
+                    startDataListener(currentUserId);
+                    lucide.createIcons();
+                    
+                } else {
+                    // 使用者已登出或未登入
+                    currentUserId = null;
+                    userEmailDisplay.textContent = '';
+
+                    authSection.classList.remove('hidden');
+                    appContainer.classList.add('hidden');
+                    
+                    // 清除 UI
+                    balanceElement.textContent = 'NT$ 0.00';
+                    listElement.innerHTML = `<p id="empty-state" class="text-center text-gray-500 p-4 border border-dashed rounded-lg">請登入以查看交易記錄。</p>`;
+                    
+                    // 停止資料監聽
+                    if (unsubscribeListener) {
+                        unsubscribeListener();
+                        unsubscribeListener = null;
+                    }
+                }
+            });
+        }
+        
+        // --- 7. Email/密碼登入處理函式 ---
+        async function handleAuth(isSignUp) {
+            const email = authEmailInput.value;
+            const password = authPasswordInput.value;
+
+            if (!email || password.length < 6) {
+                showMessage("請輸入有效的 Email，且密碼需至少 6 位元。", true);
+                return;
+            }
+
+            try {
+                if (isSignUp) {
+                    // 註冊
+                    await createUserWithEmailAndPassword(auth, email, password);
+                    showMessage("註冊成功！資料將在您的所有裝置上同步。");
+                } else {
+                    // 登入
+                    await signInWithEmailAndPassword(auth, email, password);
+                    showMessage("登入成功！");
+                }
+                
+                // 清空密碼欄位
+                authPasswordInput.value = '';
+
+            } catch (error) {
+                let errorMessage = "登入/註冊失敗。";
+                
+                // 處理常見的 Firebase Auth 錯誤
+                switch (error.code) {
+                    case 'auth/user-not-found':
+                    case 'auth/wrong-password':
+                        errorMessage = 'Email 或密碼錯誤。';
+                        break;
+                    case 'auth/email-already-in-use':
+                        errorMessage = '此 Email 已被註冊。請直接登入或嘗試不同 Email。';
+                        break;
+                    default:
+                        console.error("Auth 錯誤:", error);
+                        errorMessage += ` (${error.code})`;
+                }
+
+                showMessage(errorMessage, true);
+            }
+        }
+        
+        // --- 8. 事件監聽器：登入/註冊/登出 ---
+        loginBtn.addEventListener('click', () => handleAuth(false));
+        signupBtn.addEventListener('click', () => handleAuth(true));
+        signoutBtn.addEventListener('click', async () => {
+            try {
+                await signOut(auth);
+                showMessage("您已成功登出。");
+            } catch (e) {
+                console.error("登出錯誤:", e);
+                showMessage("登出失敗。", true);
+            }
+        });
+
+
+        // --- 9. 即時資料監聽與渲染 (邏輯不變) ---
+        function startDataListener(uid) {
+            if (unsubscribeListener) {
+                unsubscribeListener();
+            }
+            
+            if (!db || !uid) {
                 console.warn("Firestore 或 User ID 尚未準備好。");
                 return;
             }
 
-            const transactionsColRef = collection(db, getCollectionPath(userId));
-            
-            // 由於 Firestore 避免使用 orderBy，我們將所有文件抓取回來後在客戶端進行排序
+            const transactionsColRef = collection(db, getCollectionPath(uid));
             const q = query(transactionsColRef);
 
-            onSnapshot(q, (snapshot) => {
+            unsubscribeListener = onSnapshot(q, (snapshot) => {
                 const transactions = [];
                 snapshot.forEach(doc => {
-                    // 確保時間戳記存在，否則在客戶端添加一個 fallback
                     const data = doc.data();
                     transactions.push({
                         id: doc.id,
                         description: data.description,
                         amount: data.amount,
-                        createdAt: data.createdAt ? data.createdAt.toDate() : new Date(), // 客戶端排序用
+                        createdAt: data.createdAt ? data.createdAt.toDate() : new Date(), 
                     });
                 });
 
-                // 1. 客戶端排序：依照建立時間 (新的在前面)
+                // 客戶端排序：依照建立時間 (新的在前面)
                 transactions.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
                 
-                // 2. 更新 UI
                 renderTransactions(transactions);
                 calculateBalance(transactions);
 
@@ -243,16 +356,16 @@
             });
         }
         
-        // --- 7. 渲染交易列表 ---
+        // --- 10. 渲染交易列表 (邏輯不變) ---
         function renderTransactions(transactions) {
             listElement.innerHTML = '';
 
             if (transactions.length === 0) {
-                emptyState.classList.remove('hidden');
+                const emptyMsg = `<p id="empty-state" class="text-center text-gray-500 p-4 border border-dashed rounded-lg">尚無交易記錄。</p>`;
+                listElement.innerHTML = emptyMsg;
                 return;
             }
-            emptyState.classList.add('hidden');
-
+            
             transactions.forEach(transaction => {
                 const isIncome = transaction.amount > 0;
                 const sign = isIncome ? '+' : '-';
@@ -286,10 +399,8 @@
                 listElement.appendChild(item);
             });
 
-            // 重新渲染 Lucide icons
             lucide.createIcons();
 
-            // 為刪除按鈕添加事件監聽器
             document.querySelectorAll('.delete-btn').forEach(button => {
                 button.addEventListener('click', async (e) => {
                     const id = e.currentTarget.getAttribute('data-id');
@@ -300,7 +411,7 @@
             });
         }
         
-        // --- 8. 計算總餘額 ---
+        // --- 11. 計算總餘額 (邏輯不變) ---
         function calculateBalance(transactions) {
             const total = transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
             const formattedTotal = total.toFixed(2).toLocaleString('en-US');
@@ -310,12 +421,12 @@
             balanceElement.classList.add(total >= 0 ? 'text-emerald-600' : 'text-red-600');
         }
 
-        // --- 9. 新增交易 ---
-        form.addEventListener('submit', async (e) => {
+        // --- 12. 新增交易 ---
+        transactionForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            if (!db || userId === 'unknown') {
-                showMessage("資料庫服務尚未準備好，請稍候。", true);
+            if (!db || !currentUserId) {
+                showMessage("請先登入。", true);
                 return;
             }
 
@@ -328,10 +439,10 @@
             }
 
             try {
-                const docRef = await addDoc(collection(db, getCollectionPath(userId)), {
+                await addDoc(collection(db, getCollectionPath(currentUserId)), {
                     description: description,
                     amount: amount,
-                    createdAt: serverTimestamp() // 使用 Firestore 伺服器時間戳記
+                    createdAt: serverTimestamp()
                 });
 
                 showMessage("交易記錄成功！");
@@ -340,14 +451,18 @@
 
             } catch (e) {
                 console.error("新增交易記錄錯誤:", e);
-                showMessage("新增記錄失敗，請檢查網路連線。", true);
+                showMessage("新增記錄失敗，請檢查連線。", true);
             }
         });
 
-        // --- 10. 刪除交易 ---
+        // --- 13. 刪除交易 ---
         async function deleteTransaction(id) {
+            if (!db || !currentUserId) {
+                showMessage("請先登入。", true);
+                return;
+            }
             try {
-                const docRef = doc(db, getCollectionPath(userId), id);
+                const docRef = doc(db, getCollectionPath(currentUserId), id);
                 await deleteDoc(docRef);
                 showMessage("交易已刪除。");
             } catch (e) {
@@ -355,9 +470,9 @@
                 showMessage("刪除記錄失敗。", true);
             }
         }
-
+        
         // 啟動應用程式
-        initializeAppAndAuth();
+        initializeServices();
     </script>
 </body>
 </html>
