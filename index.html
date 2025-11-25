@@ -21,7 +21,7 @@
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
         /* Smooth transition for stats bars */
-        .stats-bar { transition: width 0.5s ease-out; }
+        .stats-bar { transition: width 0.5s ease-out, background-color 0.3s ease; }
     </style>
 </head>
 <!-- Use h-[100dvh] for better mobile browser support (address bar handling) -->
@@ -123,7 +123,7 @@
                     <h4 class="font-bold text-sm text-gray-600 mb-2">新增分類</h4>
                     <div class="flex gap-2 mb-2">
                         <input type="text" id="new-cat-name" placeholder="名稱 (例: 飲食)" class="flex-1 p-2 border rounded text-sm">
-                        <input type="number" id="new-cat-budget" placeholder="預算" class="w-24 p-2 border rounded text-sm">
+                        <input type="number" id="new-cat-budget" placeholder="預算 (預設為 0)" class="w-24 p-2 border rounded text-sm">
                     </div>
                     <button onclick="addCategory()" class="w-full bg-blue-500 text-white py-2 rounded text-sm font-bold">新增分類</button>
                 </div>
@@ -189,14 +189,14 @@
                         <input type="date" id="input-date" class="flex-1 bg-transparent outline-none">
                     </div>
 
-                    <!-- Category -->
+                    <!-- Category (Changed to Select) -->
                     <div class="space-y-2">
                         <label class="text-xs text-gray-500 ml-8">分類</label>
                         <div class="flex items-center border-b pb-2">
                             <i class="fa-solid fa-tag text-gray-400 w-8"></i>
-                            <div class="flex-1 overflow-x-auto hide-scrollbar flex gap-2" id="category-chips">
-                                <!-- Chips injected by JS -->
-                            </div>
+                            <select id="input-category" class="flex-1 bg-transparent outline-none">
+                                <!-- Options injected by JS -->
+                            </select>
                         </div>
                     </div>
 
@@ -558,6 +558,23 @@
 
             sortedCats.forEach(c => {
                 const percent = total > 0 ? (c.amount / total) * 100 : 0;
+                
+                // --- Color Logic based on Budget ---
+                let colorClass = 'bg-blue-500';
+                const catSetting = categories.find(cat => cat.name === c.name);
+                
+                if (catSetting) {
+                    if (catSetting.budget > 0) {
+                        const ratio = c.amount / catSetting.budget;
+                        if (ratio >= 1) colorClass = 'bg-red-500';
+                        else if (ratio >= 0.9) colorClass = 'bg-orange-500';
+                        else if (ratio >= 0.7) colorClass = 'bg-yellow-400';
+                    } else if (c.amount > 0) {
+                        // Budget is 0 but has expense -> Over budget (Red)
+                        colorClass = 'bg-red-500';
+                    }
+                }
+                
                 const div = document.createElement('div');
                 div.className = "bg-white p-3 rounded-lg shadow-sm";
                 div.innerHTML = `
@@ -569,7 +586,7 @@
                         </div>
                     </div>
                     <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                        <div class="bg-blue-500 h-2 rounded-full stats-bar" style="width: ${percent}%"></div>
+                        <div class="${colorClass} h-2 rounded-full stats-bar" style="width: ${percent}%"></div>
                     </div>
                 `;
                 list.appendChild(div);
@@ -625,7 +642,6 @@
         }
 
         // --- Modal & Form Logic ---
-        let selectedCategory = null;
 
         window.openModal = () => {
             document.getElementById('input-modal').classList.remove('hidden');
@@ -662,7 +678,8 @@
             document.getElementById('input-note').value = t.note || "";
             document.getElementById('input-payment').value = t.payment;
             
-            selectCategory(t.category);
+            // Set Select Value
+            document.getElementById('input-category').value = t.category;
 
             // Add Delete Button
             const header = document.querySelector('#input-modal .flex.justify-between');
@@ -677,40 +694,26 @@
         };
 
         function renderModalChoices() {
-            // Categories
-            const chips = document.getElementById('category-chips');
-            chips.innerHTML = '';
-            categories.forEach((c, i) => {
-                const btn = document.createElement('button');
-                btn.className = `whitespace-nowrap px-4 py-2 rounded-full text-sm border transition ${i===0 ? 'bg-blue-600 text-white border-blue-600' : 'text-gray-600 border-gray-300'}`;
-                btn.innerText = c.name;
-                btn.onclick = () => selectCategory(c.name);
-                if (i === 0) selectedCategory = c.name;
-                chips.appendChild(btn);
+            // Categories - Render as Select Options
+            const select = document.getElementById('input-category');
+            select.innerHTML = '';
+            categories.forEach((c) => {
+                const opt = document.createElement('option');
+                opt.value = c.name;
+                opt.innerText = c.name;
+                select.appendChild(opt);
             });
 
             // Payment Methods
-            const select = document.getElementById('input-payment');
-            select.innerHTML = '';
+            const paySelect = document.getElementById('input-payment');
+            paySelect.innerHTML = '';
             paymentMethods.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value = p;
                 opt.innerText = p;
-                select.appendChild(opt);
+                paySelect.appendChild(opt);
             });
         }
-
-        window.selectCategory = (name) => {
-            selectedCategory = name;
-            const btns = document.getElementById('category-chips').children;
-            Array.from(btns).forEach(btn => {
-                if (btn.innerText === name) {
-                    btn.className = "whitespace-nowrap px-4 py-2 rounded-full text-sm border transition bg-blue-600 text-white border-blue-600";
-                } else {
-                    btn.className = "whitespace-nowrap px-4 py-2 rounded-full text-sm border transition text-gray-600 border-gray-300";
-                }
-            });
-        };
 
         // --- Core Business Logic ---
 
@@ -724,16 +727,17 @@
             const date = document.getElementById('input-date').value;
             const payment = document.getElementById('input-payment').value;
             const note = document.getElementById('input-note').value;
+            const category = document.getElementById('input-category').value; // Get from select
 
-            if (!selectedCategory) {
-                alert("請選擇分類");
+            if (!category) {
+                alert("請選擇分類 (若無分類請先至設定新增)");
                 return;
             }
 
             const data = {
                 date,
                 amount,
-                category: selectedCategory,
+                category,
                 payment,
                 note,
                 timestamp: new Date().toISOString()
@@ -742,7 +746,7 @@
             showLoading(true);
             try {
                 // Check Budget Alert BEFORE saving (or parallel)
-                await checkBudget(selectedCategory, amount, date);
+                await checkBudget(category, amount, date);
 
                 if (editMode && currentEditId) {
                     await updateDoc(doc(db, getUserPath(), "data", currentEditId), data);
@@ -772,9 +776,17 @@
         // Budget Checking Logic
         async function checkBudget(categoryName, newAmount, dateStr) {
             const catSettings = categories.find(c => c.name === categoryName);
-            if (!catSettings || !catSettings.budget) return; // No budget set
+            // Allow check even if budget is 0 (which means limit is 0)
+            if (!catSettings) return; 
 
             const budget = Number(catSettings.budget);
+            
+            // If budget is 0, any amount triggers red alert immediately
+            if (budget === 0) {
+                 showAlert("預算提醒", `「${categoryName}」未設定預算或預算為 0，已超支！`, "red");
+                 return;
+            }
+
             const monthPrefix = dateStr.slice(0, 7); // YYYY-MM
             
             // Calculate existing total for this month/category
@@ -820,10 +832,14 @@
         // --- Settings Logic ---
         window.addCategory = async () => {
             const name = document.getElementById('new-cat-name').value.trim();
-            const budget = document.getElementById('new-cat-budget').value;
-            if(!name || !budget) return alert("請輸入名稱與預算");
+            const budgetVal = document.getElementById('new-cat-budget').value;
+            
+            if(!name) return alert("請輸入分類名稱");
+            
+            // Default to 0 if empty
+            const budget = budgetVal ? Number(budgetVal) : 0;
 
-            categories.push({ name, budget: Number(budget) });
+            categories.push({ name, budget });
             await saveSettings();
             document.getElementById('new-cat-name').value = '';
             document.getElementById('new-cat-budget').value = '';
