@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>跨平台支出記帳本 (專業版)</title>
+    <title>跨平台支出記帳本 (自定義版)</title>
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入 Lucide icons (用於圖示) -->
@@ -12,10 +12,7 @@
         /* 自定義 Tailwind 配置 */
         :root {
             --color-primary: #10b981; /* Emerald 500 */
-            --color-danger: #ef4444; /* Red 500 */
         }
-        .income { color: var(--color-primary); }
-        .expense { color: var(--color-danger); }
         /* 使用 Inter 字體 */
         body {
             font-family: 'Inter', sans-serif;
@@ -30,6 +27,19 @@
         .modal-backdrop {
             background-color: rgba(0, 0, 0, 0.5);
         }
+        /* 交易列表顯示調整 */
+        .transaction-grid {
+            display: grid;
+            grid-template-areas:
+                "date amount"
+                "category desc";
+            grid-template-columns: 1fr auto;
+            align-items: center;
+        }
+        .tx-date { grid-area: date; font-size: 0.75rem; color: #6b7280; } /* text-xs text-gray-500 */
+        .tx-amount { grid-area: amount; font-weight: bold; font-size: 1.125rem; color: #1f2937; /* dark gray */ }
+        .tx-category { grid-area: category; font-weight: 600; font-size: 0.875rem; margin-top: 4px; } /* text-sm */
+        .tx-description { grid-area: desc; font-size: 0.875rem; color: #4b5563; margin-top: 4px; } /* text-sm */
     </style>
 </head>
 <body class="min-h-screen p-4 sm:p-6 md:p-10">
@@ -76,21 +86,27 @@
         <header class="mb-8 flex justify-between items-center">
             <div>
                 <h1 class="text-3xl font-bold text-gray-800 flex items-center">
-                    <i data-lucide="piggy-bank" class="w-8 h-8 text-red-500 mr-2"></i>
+                    <i data-lucide="wallet" class="w-8 h-8 text-emerald-500 mr-2"></i>
                     每月支出管理
                 </h1>
                 <p id="user-email-display" class="text-sm text-gray-500 mt-1 break-all"></p>
             </div>
-            <button id="signout-btn" class="flex items-center text-sm text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition duration-150">
-                <i data-lucide="log-out" class="w-4 h-4 mr-1"></i>
-                登出
-            </button>
+            <div class="flex space-x-2">
+                 <!-- 設定按鈕 -->
+                 <button id="settings-btn" class="flex items-center text-sm text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100 transition duration-150">
+                    <i data-lucide="settings" class="w-5 h-5"></i>
+                </button>
+                <!-- 登出按鈕 -->
+                <button id="signout-btn" class="flex items-center text-sm text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition duration-150">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                </button>
+            </div>
         </header>
 
         <!-- 總餘額區塊 (顯示當月總支出) -->
-        <div class="bg-red-100 p-6 rounded-xl mb-8 shadow-inner">
+        <div class="bg-gray-100 p-6 rounded-xl mb-8 shadow-inner">
             <h2 class="text-xl font-semibold text-gray-700 mb-2">當月總支出</h2>
-            <p id="total-expense" class="text-4xl font-extrabold text-red-600">NT$ 0.00</p>
+            <p id="total-expense" class="text-4xl font-extrabold text-gray-800">NT$ 0.00</p>
             <p class="text-xs text-gray-500 mt-2">（此金額為本月所有支出總和）</p>
         </div>
 
@@ -152,7 +168,7 @@
         </section>
         
         <!-- 訊息彈窗 (showMessage) -->
-        <div id="message-box" class="fixed bottom-4 right-4 text-white p-3 rounded-xl shadow-xl hidden transition-opacity duration-300"></div>
+        <div id="message-box" class="fixed bottom-4 right-4 text-white p-3 rounded-xl shadow-xl hidden transition-opacity duration-300 z-50"></div>
 
         <!-- 預算提醒彈窗 (Budget Alert Modal) -->
         <div id="budget-alert-modal" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center z-40 p-4">
@@ -204,6 +220,50 @@
             </div>
         </div>
     </div>
+    
+    <!-- 設定模態視窗 (Settings Modal) -->
+    <div id="settings-modal" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center z-40 p-4">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg h-[90vh] overflow-hidden flex flex-col transform transition-all duration-300">
+            <div class="p-4 border-b flex justify-between items-center">
+                <h3 class="text-xl font-bold text-gray-800">自定義設定</h3>
+                <button id="close-settings-btn" class="p-2 text-gray-500 hover:text-gray-800">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            
+            <div class="flex border-b">
+                <button class="tab-btn p-3 flex-1 text-center font-semibold border-b-2" data-tab="categories">支出分類與預算</button>
+                <button class="tab-btn p-3 flex-1 text-center font-semibold border-b-2" data-tab="payments">支付工具</button>
+            </div>
+
+            <!-- 分類設定 Tab -->
+            <div id="categories-tab" class="p-4 overflow-y-auto flex-1">
+                <form id="category-form" class="mb-4 flex space-x-2">
+                    <input type="text" id="cat-name-input" placeholder="分類名稱 (e.g., 娛樂)" required
+                           class="flex-1 px-3 py-2 border border-gray-300 rounded-lg">
+                    <input type="number" id="cat-budget-input" placeholder="每月預算 (NT$)" value="0" min="0" required
+                           class="w-24 px-3 py-2 border border-gray-300 rounded-lg">
+                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition duration-150">新增</button>
+                </form>
+                <div id="categories-list" class="space-y-3">
+                    <!-- 分類列表動態載入 -->
+                </div>
+            </div>
+
+            <!-- 支付工具設定 Tab -->
+            <div id="payments-tab" class="p-4 overflow-y-auto flex-1 hidden">
+                 <form id="payment-form" class="mb-4 flex space-x-2">
+                    <input type="text" id="pm-name-input" placeholder="支付工具名稱 (e.g., 悠遊卡)" required
+                           class="flex-1 px-3 py-2 border border-gray-300 rounded-lg">
+                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition duration-150">新增</button>
+                </form>
+                <div id="payments-list" class="space-y-3">
+                    <!-- 支付工具列表動態載入 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <!-- Firebase SDKs -->
     <script type="module">
@@ -270,23 +330,30 @@
         const paymentMethodSelect = document.getElementById('payment-method');
         const amountDisplay = document.getElementById('amount-display');
         const amountValueInput = document.getElementById('amount-value');
-        const openCalculatorBtn = document.getElementById('open-calculator-btn');
         const userEmailDisplay = document.getElementById('user-email-display');
-        const signoutBtn = document.getElementById('signout-btn');
         const messageBox = document.getElementById('message-box');
         const budgetAlertModal = document.getElementById('budget-alert-modal');
-        const closeAlertBtn = document.getElementById('close-alert-btn');
-        
-        // Auth UI 元素
-        const authEmailInput = document.getElementById('auth-email');
-        const authPasswordInput = document.getElementById('auth-password');
-        const loginBtn = document.getElementById('login-btn');
-        const signupBtn = document.getElementById('signup-btn');
 
-        // Calculator 元素與狀態
+        // Setting Modal 相關元素
+        const settingsModal = document.getElementById('settings-modal');
+        const settingsBtn = document.getElementById('settings-btn');
+        const closeSettingsBtn = document.getElementById('close-settings-btn');
+        const categoriesTab = document.getElementById('categories-tab');
+        const paymentsTab = document.getElementById('payments-tab');
+        const categoriesList = document.getElementById('categories-list');
+        const paymentsList = document.getElementById('payments-list');
+        const categoryForm = document.getElementById('category-form');
+        const paymentForm = document.getElementById('payment-form');
+        const catNameInput = document.getElementById('cat-name-input');
+        const catBudgetInput = document.getElementById('cat-budget-input');
+        const pmNameInput = document.getElementById('pm-name-input');
+        
+        // Calculator 元素與狀態 (略... 保持不變)
         const calculatorModal = document.getElementById('calculator-modal');
+        const openCalculatorBtn = document.getElementById('open-calculator-btn');
         const calcDisplay = document.getElementById('calc-display');
         const calcHistory = document.getElementById('calc-history');
+        const closeAlertBtn = document.getElementById('close-alert-btn');
         let calculatorExpression = '';
         let displayValue = '0';
         
@@ -294,7 +361,7 @@
         const defaultPaymentMethods = [
             { name: '現金 (Cash)', color: 'gray-500' },
             { name: '信用卡 (Credit Card)', color: 'blue-500' },
-            { name: '電子支付 (E-Wallet)', color: 'purple-500' },
+            { name: '其他自定義 (Other)', color: 'purple-500' },
         ];
         const defaultCategories = [
             { name: '餐飲 (Food)', budget: 15000, color: 'red-500' },
@@ -303,11 +370,17 @@
             { name: '生活用品 (Groceries)', budget: 8000, color: 'blue-500' },
         ];
 
+        // 預設顏色列表 (供分類設定使用)
+        const colorOptions = [
+            'red-500', 'orange-500', 'yellow-500', 'emerald-500', 
+            'blue-500', 'indigo-500', 'purple-500', 'pink-500'
+        ];
+
 
         // --- 4. 輔助函式：顯示訊息彈窗 ---
         function showMessage(message, isError = false) {
             messageBox.textContent = message;
-            messageBox.className = `fixed bottom-4 right-4 p-3 rounded-xl shadow-2xl transition-all duration-500 transform ${isError ? 'bg-red-600' : 'bg-emerald-500'} ${isError ? 'scale-105' : 'scale-100'}`;
+            messageBox.className = `fixed bottom-4 right-4 p-3 rounded-xl shadow-2xl transition-all duration-500 transform z-50 ${isError ? 'bg-red-600' : 'bg-emerald-500'} ${isError ? 'scale-105' : 'scale-100'}`;
             messageBox.style.display = 'block';
             
             setTimeout(() => {
@@ -319,7 +392,7 @@
             }, 3000);
         }
 
-        // --- 5. Firebase 服務與路徑設定 ---
+        // --- 5. Firebase 服務與路徑設定 (略... 保持不變) ---
         function initializeServices() {
             try {
                 const app = initializeApp(firebaseConfig);
@@ -338,7 +411,7 @@
             return `artifacts/${appId}/users/${uid}/${collectionName}`;
         }
         
-        // --- 6. 登入狀態監聽器 ---
+        // --- 6. 登入狀態監聽器 (略... 保持不變) ---
         function startAuthListener() {
             onAuthStateChanged(auth, (user) => {
                 loadingOverlay.classList.add('hidden');
@@ -347,7 +420,7 @@
                     currentUserId = user.uid;
                     userEmailDisplay.textContent = `已登入: ${user.email}`;
 
-                    authSection.classList.add('hidden');
+                    document.getElementById('auth-section').classList.add('hidden');
                     appContainer.classList.remove('hidden');
                     
                     // 啟動所有資料監聽
@@ -357,7 +430,7 @@
                 } else {
                     currentUserId = null;
                     userEmailDisplay.textContent = '';
-                    authSection.classList.remove('hidden');
+                    document.getElementById('auth-section').classList.remove('hidden');
                     appContainer.classList.add('hidden');
                     
                     // 清除 UI
@@ -371,10 +444,10 @@
             });
         }
         
-        // --- 7. Email/密碼登入/註冊 ---
+        // --- 7. Email/密碼登入/註冊 (略... 保持不變) ---
         async function handleAuth(isSignUp) {
-            const email = authEmailInput.value;
-            const password = authPasswordInput.value;
+            const email = document.getElementById('auth-email').value;
+            const password = document.getElementById('auth-password').value;
             if (!email || password.length < 6) {
                 showMessage("請輸入有效的 Email，且密碼需至少 6 位元。", true);
                 return;
@@ -387,7 +460,7 @@
                     await signInWithEmailAndPassword(auth, email, password);
                     showMessage("登入成功！");
                 }
-                authPasswordInput.value = '';
+                document.getElementById('auth-password').value = '';
             } catch (error) {
                 let errorMessage = "登入/註冊失敗。";
                 switch (error.code) {
@@ -406,7 +479,7 @@
             }
         }
         
-        // --- 8. 整合資料監聽器 ---
+        // --- 8. 整合資料監聽器 (略... 保持不變) ---
         function startDataListeners(uid) {
             // 監聽交易紀錄 (expenses)
             const expenseColRef = collection(db, getCollectionPath('expenses', uid));
@@ -454,6 +527,7 @@
                     addDefaultData(defaultCategories, 'categories', uid);
                 }
                 renderCategoryOptions(categories);
+                renderSettingsLists(); // 重新渲染設定頁面列表
             }, (error) => console.error("監聽分類失敗:", error));
 
             // 監聽支付工具 (paymentMethods)
@@ -467,15 +541,21 @@
                     addDefaultData(defaultPaymentMethods, 'paymentMethods', uid);
                 }
                 renderPaymentOptions(paymentMethods);
+                renderSettingsLists(); // 重新渲染設定頁面列表
             }, (error) => console.error("監聽支付工具失敗:", error));
         }
 
-        // --- 9. 自動添加預設資料 ---
+        // --- 9. 自動添加預設資料 (略... 保持不變) ---
         async function addDefaultData(data, collectionName, uid) {
             const colRef = collection(db, getCollectionPath(collectionName, uid));
             console.log(`正在為 ${uid} 添加預設 ${collectionName}。`);
             for (const item of data) {
                 try {
+                    // 為預設分類隨機分配一個顏色
+                    if (collectionName === 'categories') {
+                        const randomColor = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+                        item.color = randomColor;
+                    }
                     await addDoc(colRef, item);
                 } catch (e) {
                     console.error(`添加預設 ${collectionName} 失敗:`, e);
@@ -483,7 +563,7 @@
             }
         }
         
-        // --- 10. 渲染下拉式選單 ---
+        // --- 10. 渲染下拉式選單 (略... 保持不變) ---
         function renderCategoryOptions(categoryList) {
             categorySelect.innerHTML = '<option value="">請選擇分類</option>';
             categoryList.forEach(cat => {
@@ -504,9 +584,8 @@
             });
         }
         
-        // --- 11. 計算當月總支出 ---
+        // --- 11. 計算當月總支出 (略... 保持不變) ---
         function calculateTotalExpense(transactionsList) {
-            // 支出已經是以負值儲存，所以我們加總後取絕對值
             const total = transactionsList.reduce((sum, transaction) => sum + transaction.amount, 0);
             const absoluteTotal = Math.abs(total);
             const formattedTotal = absoluteTotal.toFixed(2).toLocaleString('en-US');
@@ -514,10 +593,10 @@
             totalExpenseElement.textContent = `NT$ ${formattedTotal}`;
         }
         
-        // --- 12. 預算提醒檢查 ---
+        // --- 12. 預算提醒檢查 (略... 保持不變) ---
         function checkBudgetAlert(newTransaction) {
             const categoryId = newTransaction.categoryId;
-            const newAmount = Math.abs(newTransaction.amount); // 新增或編輯後的金額(正值)
+            const newAmount = Math.abs(newTransaction.amount);
             const currentMonth = new Date().getMonth();
             const currentYear = new Date().getFullYear();
 
@@ -526,10 +605,9 @@
 
             const monthlyBudget = targetCategory.budget;
 
-            // 計算本月 (不包含新交易) 該分類的總支出 (正值)
             const currentSpent = transactions
                 .filter(t => t.categoryId === categoryId && 
-                             t.id !== newTransaction.id && // 排除被編輯的舊交易
+                             t.id !== newTransaction.id &&
                              t.createdAt.getMonth() === currentMonth && 
                              t.createdAt.getFullYear() === currentYear) 
                 .reduce((sum, t) => sum + Math.abs(t.amount), 0);
@@ -569,14 +647,15 @@
                 document.getElementById('alert-message').textContent = alertMessage;
                 const iconElement = document.getElementById('alert-icon');
                 iconElement.setAttribute('data-lucide', alertIcon);
-                iconElement.classList.remove('text-red-500', 'text-orange-500', 'text-yellow-500', 'text-blue-500');
+                // 移除所有顏色類別，確保只添加新的
+                iconElement.className = iconElement.className.split(' ').filter(c => !c.startsWith('text-')).join(' ');
                 iconElement.classList.add(`text-${alertColor}`);
                 budgetAlertModal.classList.remove('hidden');
                 lucide.createIcons();
             }
         }
 
-        // --- 13. 提交交易 (新增/編輯) ---
+        // --- 13. 提交交易 (新增/編輯) (略... 保持不變) ---
         transactionForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -600,12 +679,11 @@
             const expenseAmount = -amount;
 
             const newTransactionData = {
-                id: id, // 用於預算檢查
+                id: id, 
                 description: description,
                 amount: expenseAmount,
                 categoryId: categoryId,
                 paymentMethodId: paymentMethodId,
-                // createdAt: id ? transactions.find(t => t.id === id).createdAt : serverTimestamp() // 編輯時保留時間戳
             };
 
             // 執行預算檢查 (在儲存前)
@@ -643,7 +721,7 @@
             }
         });
 
-        // --- 14. 渲染交易列表 ---
+        // --- 14. 渲染交易列表 (核心修改) ---
         function renderTransactions(transactionsList) {
             listElement.innerHTML = '';
             if (transactionsList.length === 0) {
@@ -653,35 +731,31 @@
             
             transactionsList.forEach(transaction => {
                 const category = categories.find(c => c.id === transaction.categoryId) || { name: '未知分類', color: 'gray-500' };
-                const payment = paymentMethods.find(p => p.id === transaction.paymentMethodId) || { name: '未知支付' };
-
                 // 支出是負值，取絕對值顯示
                 const absoluteAmount = Math.abs(transaction.amount);
                 const formattedAmount = absoluteAmount.toFixed(2).toLocaleString('en-US');
 
                 const item = document.createElement('div');
-                item.className = 'flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border-l-4 border-red-500';
+                // 移除紅色邊框，改用中性色/主色
+                item.className = 'flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border-l-4 border-emerald-500';
                 
                 const dateOptions = { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
                 const formattedDate = transaction.createdAt.toLocaleDateString('zh-TW', dateOptions);
 
+                // 調整顯示順序: 日期 / 分類 / 金額 / 備註
                 item.innerHTML = `
-                    <div class="flex items-start min-w-0 flex-1">
-                        <i data-lucide="trending-down" class="w-5 h-5 text-red-500 mr-3 flex-shrink-0 mt-1"></i>
-                        <div class="min-w-0 flex-1">
-                            <p class="font-medium text-gray-800 truncate">${transaction.description}</p>
-                            <p class="text-xs text-gray-500 mt-0.5">
-                                <span class="text-${category.color || 'gray-500'} font-semibold">${category.name}</span> 
-                                | ${payment.name}
-                            </p>
-                            <p class="text-xs text-gray-400 mt-0.5">${formattedDate}</p>
+                    <div class="flex items-center min-w-0 flex-1 space-x-3">
+                        <div class="min-w-0 flex-1 transaction-grid">
+                            <div class="tx-date">${formattedDate}</div>
+                            <div class="tx-amount whitespace-nowrap">
+                                - NT$ ${formattedAmount}
+                            </div>
+                            <div class="tx-category text-${category.color || 'gray-500'} truncate">${category.name}</div>
+                            <div class="tx-description text-gray-700 truncate">${transaction.description}</div>
                         </div>
                     </div>
-                    <div class="flex flex-col items-end ml-4 flex-shrink-0">
-                        <span class="font-bold text-lg text-red-600 whitespace-nowrap">
-                            - NT$ ${formattedAmount}
-                        </span>
-                        <div class="flex mt-1 space-x-2">
+                    <div class="flex flex-col items-end ml-4 flex-shrink-0 space-y-1">
+                        <div class="flex space-x-2">
                              <button data-id="${transaction.id}" class="edit-btn p-1 text-blue-400 hover:text-blue-600 transition duration-150 rounded-full hover:bg-blue-50">
                                 <i data-lucide="pencil" class="w-4 h-4"></i>
                             </button>
@@ -689,6 +763,7 @@
                                 <i data-lucide="x" class="w-4 h-4"></i>
                             </button>
                         </div>
+                        <span class="text-xs text-gray-400">${paymentMethods.find(p => p.id === transaction.paymentMethodId)?.name || '未知支付'}</span>
                     </div>
                 `;
                 listElement.appendChild(item);
@@ -713,7 +788,7 @@
             });
         }
         
-        // --- 15. 刪除交易 ---
+        // --- 15. 刪除交易 (略... 保持不變) ---
         async function deleteTransaction(id) {
             try {
                 const docRef = doc(db, getCollectionPath('expenses', currentUserId), id);
@@ -725,7 +800,7 @@
             }
         }
         
-        // --- 16. 開始編輯交易 ---
+        // --- 16. 開始編輯交易 (略... 保持不變) ---
         function startEditTransaction(id) {
             const transaction = transactions.find(t => t.id === id);
             if (!transaction) return;
@@ -733,7 +808,6 @@
             // 填充表單
             transactionIdInput.value = transaction.id;
             descriptionInput.value = transaction.description;
-            // 支出是負值，但顯示和輸入時為正值
             const amount = Math.abs(transaction.amount); 
             amountDisplay.value = amount.toFixed(2);
             amountValueInput.value = amount.toFixed(2);
@@ -745,7 +819,7 @@
             submitBtn.textContent = '更新紀錄';
         }
 
-        // --- 17. 重設表單 ---
+        // --- 17. 重設表單 (略... 保持不變) ---
         function resetForm() {
             transactionForm.reset();
             transactionIdInput.value = '';
@@ -755,12 +829,10 @@
             submitBtn.textContent = '儲存紀錄';
         }
 
-        // --- 18. 計算機功能 (Calculator Logic) ---
+        // --- 18. 計算機功能 (Calculator Logic) (略... 保持不變) ---
         function evaluateExpression(expression) {
             try {
-                // 替換運算符號以便 eval 執行
                 let sanitized = expression.replace(/×/g, '*').replace(/÷/g, '/');
-                // 限制小數點後兩位
                 return parseFloat(eval(sanitized).toFixed(2));
             } catch (e) {
                 return NaN;
@@ -777,7 +849,6 @@
                 if (calculatorExpression === '') {
                     displayValue = '0';
                 } else {
-                    // 重新計算當前顯示值
                     const parts = calculatorExpression.split(/[\+\-\*\/÷]/);
                     displayValue = parts[parts.length - 1] || calculatorExpression;
                 }
@@ -795,19 +866,16 @@
             } else if (['+', '-', '*', '/', '×', '÷'].includes(key)) {
                 const lastChar = calculatorExpression.slice(-1);
                 if (['+', '-', '*', '/', '×', '÷'].includes(lastChar) && key !== lastChar) {
-                    // 替換最後一個運算符
                     calculatorExpression = calculatorExpression.slice(0, -1) + key;
                 } else if (!['+', '-', '*', '/', '×', '÷'].includes(lastChar)) {
-                    // 執行一次完整的計算並添加新運算符
                     const result = evaluateExpression(calculatorExpression);
                     if (!isNaN(result)) {
                         calculatorExpression = result.toString() + key;
                     } else {
-                        // 忽略運算符
                         return;
                     }
                 }
-                displayValue = key; // 顯示運算符
+                displayValue = key;
             } else if (key === '.') {
                 const parts = calculatorExpression.split(/[\+\-\*\/÷]/);
                 const currentNumber = parts[parts.length - 1] || '0';
@@ -815,7 +883,7 @@
                     calculatorExpression += key;
                     displayValue += key;
                 }
-            } else { // 數字鍵
+            } else {
                 if (displayValue === '0' && key !== '.') {
                     displayValue = key;
                     calculatorExpression = calculatorExpression.slice(0, -1) + key;
@@ -832,10 +900,122 @@
             }
         }
 
-        // 事件監聽器：登入/註冊/登出
-        loginBtn.addEventListener('click', () => handleAuth(false));
-        signupBtn.addEventListener('click', () => handleAuth(true));
-        signoutBtn.addEventListener('click', async () => {
+        // --- 19. 設定頁面功能 (Categories/Payments Management) ---
+
+        // 渲染設定列表
+        function renderSettingsLists() {
+            // 渲染分類列表
+            categoriesList.innerHTML = '';
+            categories.forEach(cat => {
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between bg-gray-50 p-3 rounded-lg border';
+                item.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <span class="w-3 h-3 rounded-full bg-${cat.color || 'gray-500'}"></span>
+                        <p class="font-medium text-gray-800">${cat.name}</p>
+                        <span class="text-sm text-gray-500">(預算: NT$ ${cat.budget ? cat.budget.toLocaleString() : '無'})</span>
+                    </div>
+                    <button data-id="${cat.id}" data-type="category" class="delete-config-btn p-1 text-gray-400 hover:text-red-600 transition duration-150 rounded-full hover:bg-red-50">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                `;
+                categoriesList.appendChild(item);
+            });
+
+            // 渲染支付工具列表
+            paymentsList.innerHTML = '';
+            paymentMethods.forEach(pm => {
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between bg-gray-50 p-3 rounded-lg border';
+                item.innerHTML = `
+                    <p class="font-medium text-gray-800">${pm.name}</p>
+                    <button data-id="${pm.id}" data-type="paymentMethod" class="delete-config-btn p-1 text-gray-400 hover:text-red-600 transition duration-150 rounded-full hover:bg-red-50">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                `;
+                paymentsList.appendChild(item);
+            });
+            lucide.createIcons();
+            
+            // 綁定刪除事件
+            document.querySelectorAll('.delete-config-btn').forEach(btn => {
+                btn.addEventListener('click', deleteConfigItem);
+            });
+        }
+        
+        async function deleteConfigItem(e) {
+            if (!currentUserId || !db) return;
+            const id = e.currentTarget.getAttribute('data-id');
+            const type = e.currentTarget.getAttribute('data-type');
+            
+            if (!id || !type) return;
+
+            try {
+                const collectionName = type === 'category' ? 'categories' : 'paymentMethods';
+                const docRef = doc(db, getCollectionPath(collectionName, currentUserId), id);
+                await deleteDoc(docRef);
+                showMessage(`${collectionName === 'categories' ? '分類' : '支付工具'} 已刪除。`);
+            } catch (error) {
+                console.error("刪除設定項目錯誤:", error);
+                showMessage("刪除失敗。", true);
+            }
+        }
+
+        // 提交新增分類
+        categoryForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!currentUserId || !db) return;
+
+            const name = catNameInput.value.trim();
+            const budget = parseInt(catBudgetInput.value) || 0;
+
+            if (name && budget >= 0) {
+                const randomColor = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+                try {
+                    await addDoc(collection(db, getCollectionPath('categories', currentUserId)), {
+                        name: name,
+                        budget: budget,
+                        color: randomColor
+                    });
+                    showMessage(`分類【${name}】已新增！`);
+                    categoryForm.reset();
+                } catch (error) {
+                    showMessage("新增分類失敗。", true);
+                }
+            } else {
+                showMessage("請輸入有效的名稱和預算。", true);
+            }
+        });
+
+        // 提交新增支付工具
+        paymentForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!currentUserId || !db) return;
+
+            const name = pmNameInput.value.trim();
+
+            if (name) {
+                try {
+                    await addDoc(collection(db, getCollectionPath('paymentMethods', currentUserId)), {
+                        name: name
+                    });
+                    showMessage(`支付工具【${name}】已新增！`);
+                    paymentForm.reset();
+                } catch (error) {
+                    showMessage("新增支付工具失敗。", true);
+                }
+            } else {
+                showMessage("請輸入有效的名稱。", true);
+            }
+        });
+
+
+        // --- 20. 事件監聽器：總結 ---
+        
+        // Auth events (略... 保持不變)
+        document.getElementById('login-btn').addEventListener('click', () => handleAuth(false));
+        document.getElementById('signup-btn').addEventListener('click', () => handleAuth(true));
+        document.getElementById('signout-btn').addEventListener('click', async () => {
             try {
                 await signOut(auth);
                 showMessage("您已成功登出。");
@@ -845,10 +1025,9 @@
             }
         });
         
-        // 事件監聽器：計算機
+        // Calculator events (略... 保持不變)
         openCalculatorBtn.addEventListener('click', () => {
             calculatorModal.classList.remove('hidden');
-            // 初始化計算機顯示上次輸入的值
             calculatorExpression = amountValueInput.value === '0' ? '' : amountValueInput.value;
             displayValue = amountValueInput.value === '0' ? '0' : amountValueInput.value;
             calcDisplay.textContent = displayValue;
@@ -861,7 +1040,6 @@
             }
         });
 
-        // 綁定計算機按鍵點擊事件
         document.querySelectorAll('.calc-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const key = e.currentTarget.getAttribute('data-key');
@@ -871,26 +1049,58 @@
             });
         });
 
-        // OK 按鈕
         document.getElementById('calc-ok-btn').addEventListener('click', () => {
             const result = evaluateExpression(calculatorExpression);
-            if (!isNaN(result) && result > 0) {
+            if (!isNaN(result) && result >= 0) {
                 amountDisplay.value = result.toFixed(2);
                 amountValueInput.value = result.toFixed(2);
-                calculatorModal.classList.add('hidden');
-            } else if (result === 0) {
-                amountDisplay.value = '0';
-                amountValueInput.value = '0';
                 calculatorModal.classList.add('hidden');
             } else {
                 showMessage('無效或負數的金額。請重新輸入。', true);
             }
         });
         
-        // 預算提醒關閉按鈕
+        // Budget Alert close button (略... 保持不變)
         closeAlertBtn.addEventListener('click', () => {
             budgetAlertModal.classList.add('hidden');
         });
+        
+        // Settings Modal events
+        settingsBtn.addEventListener('click', () => {
+            settingsModal.classList.remove('hidden');
+            document.querySelector('.tab-btn[data-tab="categories"]').click(); // 預設開啟分類
+            lucide.createIcons();
+        });
+        closeSettingsBtn.addEventListener('click', () => {
+            settingsModal.classList.add('hidden');
+        });
+        settingsModal.addEventListener('click', (e) => {
+             if (e.target.id === 'settings-modal') {
+                settingsModal.classList.add('hidden');
+            }
+        });
+        
+        // Tab switching logic
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.tab-btn').forEach(b => {
+                    b.classList.remove('border-blue-500', 'text-blue-500');
+                    b.classList.add('border-transparent', 'text-gray-500');
+                });
+                e.currentTarget.classList.add('border-blue-500', 'text-blue-500');
+                e.currentTarget.classList.remove('border-transparent', 'text-gray-500');
+
+                categoriesTab.classList.add('hidden');
+                paymentsTab.classList.add('hidden');
+
+                if (e.currentTarget.getAttribute('data-tab') === 'categories') {
+                    categoriesTab.classList.remove('hidden');
+                } else {
+                    paymentsTab.classList.remove('hidden');
+                }
+            });
+        });
+
 
         // 啟動應用程式
         initializeServices();
