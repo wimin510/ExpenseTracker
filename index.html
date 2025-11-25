@@ -117,20 +117,23 @@
                 <!-- Hidden field for editing -->
                 <input type="hidden" id="transaction-id" value=""> 
 
+                <!-- 1. 交易日期 (新增) -->
                 <div class="mb-4">
-                    <label for="description" class="block text-sm font-medium text-gray-700 mb-1">描述/備註</label>
-                    <input type="text" id="description" placeholder="例如：星巴克咖啡、週末購物" required
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150">
+                    <label for="transaction-date" class="block text-sm font-medium text-gray-700 mb-1">日期</label>
+                    <input type="date" id="transaction-date" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150 bg-white">
                 </div>
-                
+
+                <!-- 2. 支出分類 -->
                 <div class="mb-4">
-                    <label for="category" class="block text-sm font-medium text-gray-700 mb-1">支出分類</label>
+                    <label for="category" class="block text-sm font-medium text-gray-700 mb-1">分類</label>
                     <select id="category" required 
                             class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150 bg-white">
                         <option value="">請選擇分類</option>
                     </select>
                 </div>
                 
+                <!-- 3. 支付工具 -->
                 <div class="mb-4">
                     <label for="payment-method" class="block text-sm font-medium text-gray-700 mb-1">支付工具</label>
                     <select id="payment-method" required 
@@ -139,7 +142,8 @@
                     </select>
                 </div>
 
-                <div class="mb-6">
+                <!-- 4. 金額 -->
+                <div class="mb-4">
                     <label for="amount-display" class="block text-sm font-medium text-gray-700 mb-1">金額 (請按此輸入)</label>
                     <div id="amount-input-group" class="relative">
                         <input type="text" id="amount-display" value="0" readonly required
@@ -150,6 +154,14 @@
                     </div>
                     <input type="hidden" id="amount-value" value="0">
                 </div>
+                
+                <!-- 5. 描述/備註 -->
+                <div class="mb-6">
+                    <label for="description" class="block text-sm font-medium text-gray-700 mb-1">備註</label>
+                    <input type="text" id="description" placeholder="例如：星巴克咖啡、週末購物" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150">
+                </div>
+
                 
                 <button type="submit" id="submit-btn"
                         class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-[1.01]">
@@ -276,7 +288,7 @@
             signOut,
             onAuthStateChanged
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, addDoc, deleteDoc, updateDoc, onSnapshot, collection, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, addDoc, deleteDoc, updateDoc, onSnapshot, collection, query, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // 設定 Firestore 紀錄等級 (Debug 用)
@@ -325,6 +337,10 @@
         const transactionIdInput = document.getElementById('transaction-id');
         const formTitle = document.getElementById('form-title');
         const submitBtn = document.getElementById('submit-btn');
+        
+        // 新增：日期輸入欄位
+        const transactionDateInput = document.getElementById('transaction-date');
+        
         const descriptionInput = document.getElementById('description');
         const categorySelect = document.getElementById('category');
         const paymentMethodSelect = document.getElementById('payment-method');
@@ -375,6 +391,19 @@
             'red-500', 'orange-500', 'yellow-500', 'emerald-500', 
             'blue-500', 'indigo-500', 'purple-500', 'pink-500'
         ];
+
+        // --- 輔助函式：將日期格式化為 YYYY-MM-DD ---
+        function formatDateToYYYYMMDD(date) {
+            const d = new Date(date);
+            const month = '' + (d.getMonth() + 1);
+            const day = '' + d.getDate();
+            const year = d.getFullYear();
+
+            return [year, month.padStart(2, '0'), day.padStart(2, '0')].join('-');
+        }
+        
+        // 初始化日期欄位為今天
+        transactionDateInput.value = formatDateToYYYYMMDD(new Date());
 
 
         // --- 4. 輔助函式：顯示訊息彈窗 ---
@@ -479,34 +508,36 @@
             }
         }
         
-        // --- 8. 整合資料監聽器 (略... 保持不變) ---
+        // --- 8. 整合資料監聽器 (主要調整：過濾邏輯改用 date 欄位) ---
         function startDataListeners(uid) {
             // 監聽交易紀錄 (expenses)
             const expenseColRef = collection(db, getCollectionPath('expenses', uid));
             unsubscribeListeners.expenses = onSnapshot(expenseColRef, (snapshot) => {
                 transactions = [];
-                const currentMonth = new Date().getMonth();
-                const currentYear = new Date().getFullYear();
+                const now = new Date();
+                const currentMonth = now.getMonth();
+                const currentYear = now.getFullYear();
 
                 snapshot.forEach(doc => {
                     const data = doc.data();
-                    const createdAtDate = data.createdAt ? data.createdAt.toDate() : new Date();
+                    // 交易日期現在是儲存在 date 欄位，並且是 Timestamp 物件
+                    const transactionDate = data.date ? data.date.toDate() : new Date();
                     
                     // 只儲存當月的交易紀錄
-                    if (createdAtDate.getMonth() === currentMonth && createdAtDate.getFullYear() === currentYear) {
+                    if (transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear) {
                          transactions.push({
                             id: doc.id,
                             description: data.description,
                             amount: data.amount, // 注意: amount 已經是以負值儲存的支出
                             categoryId: data.categoryId,
                             paymentMethodId: data.paymentMethodId,
-                            createdAt: createdAtDate, 
+                            date: transactionDate, // 使用使用者選擇的日期
                         });
                     }
                 });
 
-                // 客戶端排序：依照建立時間 (新的在前面)
-                transactions.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+                // 客戶端排序：依照交易日期 (新的在前面)
+                transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
                 
                 renderTransactions(transactions);
                 calculateTotalExpense(transactions);
@@ -593,23 +624,27 @@
             totalExpenseElement.textContent = `NT$ ${formattedTotal}`;
         }
         
-        // --- 12. 預算提醒檢查 (略... 保持不變) ---
+        // --- 12. 預算提醒檢查 (調整：使用 transaction.date 進行月份檢查) ---
         function checkBudgetAlert(newTransaction) {
             const categoryId = newTransaction.categoryId;
             const newAmount = Math.abs(newTransaction.amount);
-            const currentMonth = new Date().getMonth();
-            const currentYear = new Date().getFullYear();
+            
+            // 使用新交易的日期來確定月份
+            const newTxDate = newTransaction.date; 
+            const txMonth = newTxDate.getMonth();
+            const txYear = newTxDate.getFullYear();
 
             const targetCategory = categories.find(c => c.id === categoryId);
             if (!targetCategory || !targetCategory.budget) return;
 
             const monthlyBudget = targetCategory.budget;
 
+            // 過濾同分類、同月份且非自身（編輯時）的交易
             const currentSpent = transactions
                 .filter(t => t.categoryId === categoryId && 
                              t.id !== newTransaction.id &&
-                             t.createdAt.getMonth() === currentMonth && 
-                             t.createdAt.getFullYear() === currentYear) 
+                             t.date.getMonth() === txMonth && 
+                             t.date.getFullYear() === txYear) 
                 .reduce((sum, t) => sum + Math.abs(t.amount), 0);
             
             const totalSpentAfterTx = currentSpent + newAmount;
@@ -655,7 +690,7 @@
             }
         }
 
-        // --- 13. 提交交易 (新增/編輯) (略... 保持不變) ---
+        // --- 13. 提交交易 (新增/編輯) (主要調整：使用 Date Input) ---
         transactionForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -669,12 +704,17 @@
             const amount = parseFloat(amountValueInput.value); // amount 是正值
             const categoryId = categorySelect.value;
             const paymentMethodId = paymentMethodSelect.value;
-
-            if (!description || isNaN(amount) || amount <= 0 || !categoryId || !paymentMethodId) {
-                showMessage("請輸入有效的描述、大於零的金額，並選擇分類與支付工具。", true);
+            const dateString = transactionDateInput.value; // YYYY-MM-DD
+            
+            if (!dateString || !description || isNaN(amount) || amount <= 0 || !categoryId || !paymentMethodId) {
+                showMessage("請輸入有效的日期、備註、大於零的金額，並選擇分類與支付工具。", true);
                 return;
             }
             
+            // 將日期字串轉換為 Date 物件，並轉換為 Firestore Timestamp
+            const transactionDate = new Date(dateString);
+            const firestoreTimestamp = Timestamp.fromDate(transactionDate);
+
             // 支出一律儲存為負值
             const expenseAmount = -amount;
 
@@ -684,10 +724,11 @@
                 amount: expenseAmount,
                 categoryId: categoryId,
                 paymentMethodId: paymentMethodId,
+                date: firestoreTimestamp, // 使用日期選擇器輸入的值
             };
 
             // 執行預算檢查 (在儲存前)
-            checkBudgetAlert({...newTransactionData, amount: amount}); // 傳遞正值金額給檢查函式
+            checkBudgetAlert({...newTransactionData, amount: amount, date: transactionDate}); // 傳遞正值金額和Date物件給檢查函式
 
             try {
                 if (id) {
@@ -698,6 +739,7 @@
                         amount: expenseAmount,
                         categoryId: categoryId,
                         paymentMethodId: paymentMethodId,
+                        date: firestoreTimestamp,
                     });
                     showMessage("交易紀錄更新成功！");
                 } else {
@@ -707,7 +749,7 @@
                         amount: expenseAmount,
                         categoryId: categoryId,
                         paymentMethodId: paymentMethodId,
-                        createdAt: serverTimestamp()
+                        date: firestoreTimestamp, // 使用日期選擇器輸入的值
                     });
                     showMessage("交易記錄新增成功！");
                 }
@@ -721,7 +763,7 @@
             }
         });
 
-        // --- 14. 渲染交易列表 (核心修改) ---
+        // --- 14. 渲染交易列表 (略... 保持不變) ---
         function renderTransactions(transactionsList) {
             listElement.innerHTML = '';
             if (transactionsList.length === 0) {
@@ -739,14 +781,14 @@
                 // 移除紅色邊框，改用中性色/主色
                 item.className = 'flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border-l-4 border-emerald-500';
                 
-                const dateOptions = { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
-                const formattedDate = transaction.createdAt.toLocaleDateString('zh-TW', dateOptions);
+                // 顯示日期：YYYY/MM/DD
+                const formattedDate = formatDateToYYYYMMDD(transaction.date);
 
                 // 調整顯示順序: 日期 / 分類 / 金額 / 備註
                 item.innerHTML = `
                     <div class="flex items-center min-w-0 flex-1 space-x-3">
                         <div class="min-w-0 flex-1 transaction-grid">
-                            <div class="tx-date">${formattedDate}</div>
+                            <div class="tx-date text-sm">${formattedDate}</div>
                             <div class="tx-amount whitespace-nowrap">
                                 - NT$ ${formattedAmount}
                             </div>
@@ -800,13 +842,17 @@
             }
         }
         
-        // --- 16. 開始編輯交易 (略... 保持不變) ---
+        // --- 16. 開始編輯交易 (調整：讀取並設定日期) ---
         function startEditTransaction(id) {
             const transaction = transactions.find(t => t.id === id);
             if (!transaction) return;
 
             // 填充表單
             transactionIdInput.value = transaction.id;
+            
+            // 設定日期欄位
+            transactionDateInput.value = formatDateToYYYYMMDD(transaction.date); 
+            
             descriptionInput.value = transaction.description;
             const amount = Math.abs(transaction.amount); 
             amountDisplay.value = amount.toFixed(2);
@@ -819,12 +865,13 @@
             submitBtn.textContent = '更新紀錄';
         }
 
-        // --- 17. 重設表單 (略... 保持不變) ---
+        // --- 17. 重設表單 (調整：重設日期為今天) ---
         function resetForm() {
             transactionForm.reset();
             transactionIdInput.value = '';
             amountDisplay.value = '0';
             amountValueInput.value = '0';
+            transactionDateInput.value = formatDateToYYYYMMDD(new Date()); // 重設日期為今天
             formTitle.textContent = '新增支出紀錄';
             submitBtn.textContent = '儲存紀錄';
         }
@@ -900,7 +947,7 @@
             }
         }
 
-        // --- 19. 設定頁面功能 (Categories/Payments Management) ---
+        // --- 19. 設定頁面功能 (Categories/Payments Management) (略... 保持不變) ---
 
         // 渲染設定列表
         function renderSettingsLists() {
