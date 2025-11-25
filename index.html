@@ -2,228 +2,760 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>紀錄儲存應用程式</title>
-    <!-- 載入 Tailwind CSS -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>記帳小幫手</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
     <style>
-        /* 使用 Inter 字體 */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f4f7f9;
-        }
+        body { font-family: 'Noto Sans TC', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .calc-btn { transition: background-color 0.1s; }
+        .calc-btn:active { background-color: #e5e7eb; }
+        /* Hide scrollbar for category list */
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body class="p-4 md:p-8 min-h-screen">
+<body class="bg-gray-100 h-screen flex flex-col overflow-hidden">
 
-    <div id="app-container" class="max-w-3xl mx-auto bg-white shadow-2xl rounded-xl p-6 md:p-10 transition-all duration-300">
-        <h1 class="text-3xl font-bold text-center text-blue-700 mb-6">我的即時紀錄本</h1>
-        
-        <!-- 訊息提示區域 -->
-        <div id="message-area" class="mb-4"></div>
+    <!-- Loading Overlay -->
+    <div id="loading" class="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center hidden">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <p class="mt-4 text-gray-500 text-sm">資料同步中...</p>
+    </div>
 
-        <!-- 使用者 ID 顯示 (用於協助除錯路徑) -->
-        <p id="user-id-display" class="text-sm text-gray-500 mb-6 text-center"></p>
-
-        <!-- 紀錄輸入區塊 -->
-        <div class="mb-8 p-4 bg-blue-50 rounded-lg shadow-inner">
-            <textarea id="record-input" rows="3" placeholder="在這裡輸入您的新紀錄..." 
-                class="w-full p-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-150 text-gray-700"></textarea>
+    <!-- Auth Container -->
+    <div id="auth-container" class="flex-grow flex items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+            <h1 class="text-2xl font-bold text-center mb-6 text-gray-800">記帳小幫手</h1>
             
-            <button onclick="addRecord()" id="save-button"
-                class="w-full mt-3 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-150 ease-in-out transform hover:scale-[1.01] disabled:opacity-50"
-                disabled>
-                儲存新紀錄 (等待初始化...)
+            <!-- Login Form -->
+            <div id="login-form">
+                <input type="email" id="login-email" placeholder="電子郵件" class="w-full p-3 mb-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="password" id="login-password" placeholder="密碼" class="w-full p-3 mb-6 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="handleLogin()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700">登入</button>
+                <p class="mt-4 text-center text-sm text-gray-600">還沒有帳號? <button onclick="toggleAuth('register')" class="text-blue-600 font-bold">註冊</button></p>
+            </div>
+
+            <!-- Register Form -->
+            <div id="register-form" class="hidden">
+                <input type="email" id="reg-email" placeholder="設定電子郵件" class="w-full p-3 mb-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                <input type="password" id="reg-password" placeholder="設定密碼 (至少6位)" class="w-full p-3 mb-6 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                <button onclick="handleRegister()" class="w-full bg-green-600 text-white p-3 rounded-lg font-bold hover:bg-green-700">註冊並登入</button>
+                <p class="mt-4 text-center text-sm text-gray-600">已有帳號? <button onclick="toggleAuth('login')" class="text-blue-600 font-bold">登入</button></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Container (Hidden until logged in) -->
+    <div id="app-container" class="hidden flex-col h-full w-full max-w-md mx-auto bg-white shadow-2xl relative">
+        
+        <!-- Header -->
+        <header class="bg-blue-600 text-white p-4 flex justify-between items-center shadow-md z-10">
+            <h2 class="text-lg font-bold" id="header-title">本月支出</h2>
+            <button onclick="logout()" class="text-sm bg-blue-700 px-3 py-1 rounded hover:bg-blue-800">登出</button>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-grow overflow-y-auto relative bg-gray-50" id="main-view">
+            <!-- Monthly Summary -->
+            <div class="bg-white p-4 shadow-sm mb-2">
+                <div class="text-gray-500 text-sm mb-1">本月總支出</div>
+                <div class="text-3xl font-bold text-gray-800" id="month-total">$0</div>
+            </div>
+
+            <!-- Transaction List -->
+            <div id="transaction-list" class="pb-20">
+                <!-- Transactions will be injected here -->
+            </div>
+        </main>
+
+        <!-- Settings View (Hidden) -->
+        <div id="settings-view" class="hidden flex-grow overflow-y-auto bg-gray-50 pb-20 p-4">
+            <h3 class="text-lg font-bold text-gray-700 mb-4">分類與預算設定</h3>
+            
+            <!-- Category List -->
+            <div id="category-settings-list" class="space-y-3 mb-6">
+                <!-- Categories injected here -->
+            </div>
+
+            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+                <h4 class="font-bold text-sm text-gray-600 mb-2">新增分類</h4>
+                <div class="flex gap-2 mb-2">
+                    <input type="text" id="new-cat-name" placeholder="名稱 (例: 飲食)" class="flex-1 p-2 border rounded text-sm">
+                    <input type="number" id="new-cat-budget" placeholder="預算" class="w-24 p-2 border rounded text-sm">
+                </div>
+                <button onclick="addCategory()" class="w-full bg-blue-500 text-white py-2 rounded text-sm font-bold">新增分類</button>
+            </div>
+
+            <h3 class="text-lg font-bold text-gray-700 mt-8 mb-4">支付方式設定</h3>
+             <div id="payment-settings-list" class="flex flex-wrap gap-2 mb-4">
+                <!-- Payment methods injected here -->
+            </div>
+             <div class="flex gap-2">
+                <input type="text" id="new-pay-method" placeholder="新支付方式" class="flex-1 p-2 border rounded text-sm">
+                <button onclick="addPaymentMethod()" class="bg-green-500 text-white px-4 py-2 rounded text-sm font-bold">新增</button>
+            </div>
+        </div>
+
+        <!-- Add/Edit Button (Floating) -->
+        <button onclick="openModal()" class="absolute bottom-20 right-4 bg-blue-600 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl hover:bg-blue-700 z-20 transition-transform hover:scale-110">
+            <i class="fa-solid fa-plus"></i>
+        </button>
+
+        <!-- Bottom Nav -->
+        <nav class="bg-white border-t flex justify-around p-3 z-30">
+            <button onclick="switchView('home')" class="flex flex-col items-center text-blue-600 nav-btn" id="nav-home">
+                <i class="fa-solid fa-list text-xl mb-1"></i>
+                <span class="text-xs">紀錄</span>
             </button>
-        </div>
+            <button onclick="switchView('settings')" class="flex flex-col items-center text-gray-400 nav-btn" id="nav-settings">
+                <i class="fa-solid fa-gear text-xl mb-1"></i>
+                <span class="text-xs">設定</span>
+            </button>
+        </nav>
+    </div>
 
-        <!-- 紀錄清單區塊 -->
-        <h2 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">已儲存的紀錄</h2>
-        <div id="records-list" class="space-y-4">
-            <p class="text-center text-gray-400 p-4" id="loading-text">正在載入紀錄...</p>
-            <!-- 紀錄將在這裡即時顯示 -->
-        </div>
+    <!-- Input Modal (Calculator & Form) -->
+    <div id="input-modal" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden flex flex-col justify-end">
+        <div class="bg-white rounded-t-2xl shadow-2xl h-[90vh] flex flex-col animate-slide-up overflow-hidden">
+            
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center p-4 border-b">
+                <button onclick="closeModal()" class="text-gray-500 p-2"><i class="fa-solid fa-times text-xl"></i></button>
+                <h3 class="font-bold text-lg" id="modal-title">新增支出</h3>
+                <button onclick="saveTransaction()" class="text-blue-600 font-bold p-2">儲存</button>
+            </div>
 
+            <!-- Form Fields -->
+            <div class="p-4 flex-grow overflow-y-auto">
+                <!-- Display Area -->
+                <div class="bg-gray-100 p-4 rounded-xl mb-4 text-right">
+                    <div class="text-xs text-gray-500 mb-1" id="calc-expression"></div>
+                    <div class="text-4xl font-bold text-gray-800 truncate" id="calc-display">0</div>
+                </div>
+
+                <!-- Fields Grid -->
+                <div class="space-y-4">
+                    <!-- Date -->
+                    <div class="flex items-center border-b pb-2">
+                        <i class="fa-regular fa-calendar text-gray-400 w-8"></i>
+                        <input type="date" id="input-date" class="flex-1 bg-transparent outline-none">
+                    </div>
+
+                    <!-- Category -->
+                    <div class="space-y-2">
+                        <label class="text-xs text-gray-500 ml-8">分類</label>
+                        <div class="flex items-center border-b pb-2">
+                            <i class="fa-solid fa-tag text-gray-400 w-8"></i>
+                            <div class="flex-1 overflow-x-auto hide-scrollbar flex gap-2" id="category-chips">
+                                <!-- Chips injected by JS -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Method -->
+                    <div class="space-y-2">
+                        <label class="text-xs text-gray-500 ml-8">支付方式</label>
+                        <div class="flex items-center border-b pb-2">
+                            <i class="fa-regular fa-credit-card text-gray-400 w-8"></i>
+                            <select id="input-payment" class="flex-1 bg-transparent outline-none">
+                                <!-- Options injected JS -->
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Note -->
+                    <div class="flex items-center border-b pb-2">
+                        <i class="fa-regular fa-comment text-gray-400 w-8"></i>
+                        <input type="text" id="input-note" placeholder="備註 (選填)" class="flex-1 bg-transparent outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Calculator Keypad -->
+            <div class="bg-gray-50 p-2 grid grid-cols-4 gap-2 border-t h-1/3">
+                <button class="calc-btn bg-white rounded shadow-sm text-lg font-bold text-gray-700 py-3" onclick="calcInput('7')">7</button>
+                <button class="calc-btn bg-white rounded shadow-sm text-lg font-bold text-gray-700 py-3" onclick="calcInput('8')">8</button>
+                <button class="calc-btn bg-white rounded shadow-sm text-lg font-bold text-gray-700 py-3" onclick="calcInput('9')">9</button>
+                <button class="calc-btn bg-blue-100 text-blue-600 rounded shadow-sm text-lg font-bold py-3" onclick="calcOp('/')">÷</button>
+
+                <button class="calc-btn bg-white rounded shadow-sm text-lg font-bold text-gray-700 py-3" onclick="calcInput('4')">4</button>
+                <button class="calc-btn bg-white rounded shadow-sm text-lg font-bold text-gray-700 py-3" onclick="calcInput('5')">5</button>
+                <button class="calc-btn bg-white rounded shadow-sm text-lg font-bold text-gray-700 py-3" onclick="calcInput('6')">6</button>
+                <button class="calc-btn bg-blue-100 text-blue-600 rounded shadow-sm text-lg font-bold py-3" onclick="calcOp('*')">×</button>
+
+                <button class="calc-btn bg-white rounded shadow-sm text-lg font-bold text-gray-700 py-3" onclick="calcInput('1')">1</button>
+                <button class="calc-btn bg-white rounded shadow-sm text-lg font-bold text-gray-700 py-3" onclick="calcInput('2')">2</button>
+                <button class="calc-btn bg-white rounded shadow-sm text-lg font-bold text-gray-700 py-3" onclick="calcInput('3')">3</button>
+                <button class="calc-btn bg-blue-100 text-blue-600 rounded shadow-sm text-lg font-bold py-3" onclick="calcOp('-')">-</button>
+
+                <button class="calc-btn bg-red-100 text-red-500 rounded shadow-sm text-lg font-bold py-3" onclick="calcClear()">C</button>
+                <button class="calc-btn bg-white rounded shadow-sm text-lg font-bold text-gray-700 py-3" onclick="calcInput('0')">0</button>
+                <button class="calc-btn bg-white rounded shadow-sm text-lg font-bold text-gray-700 py-3" onclick="calcOp('+')">+</button>
+                <button class="calc-btn bg-blue-600 text-white rounded shadow-sm text-lg font-bold py-3" onclick="saveTransaction()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Modal -->
+    <div id="alert-modal" class="fixed inset-0 bg-black bg-opacity-60 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm text-center">
+            <div id="alert-icon" class="text-4xl mb-4">⚠️</div>
+            <h3 id="alert-title" class="text-xl font-bold mb-2">預算提醒</h3>
+            <p id="alert-msg" class="text-gray-600 mb-6">已達到預算的 50%</p>
+            <button onclick="document.getElementById('alert-modal').classList.add('hidden')" class="bg-blue-600 text-white w-full py-2 rounded-lg font-bold">知道了</button>
+        </div>
     </div>
 
     <script type="module">
-        // =========================================================
-        // 1. Firebase 初始化設定與模組匯入 (必須使用 ES Module 格式)
-        // =========================================================
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, setLogLevel, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, where, onSnapshot, doc, setDoc, getDoc, updateDoc, deleteDoc, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-        // 必須使用的全域變數
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        // --- Firebase Config ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBJcP4HOoVFnbzLT-jdnrW1AtAWXVfjEaM",
+            authDomain: "my-expense-tracker-574dd.firebaseapp.com",
+            projectId: "my-expense-tracker-574dd",
+            storageBucket: "my-expense-tracker-574dd.firebasestorage.app",
+            messagingSenderId: "514938495732",
+            appId: "1:514938495732:web:bb3529eca4f2db547b74a1",
+            measurementId: "G-CDTCB6MFZ3"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- Global State ---
+        let currentUser = null;
+        let categories = []; // { name: string, budget: number }
+        let paymentMethods = ["現金", "信用卡"];
+        let transactions = [];
+        let editMode = false;
+        let currentEditId = null;
+        const appId = "my-expense-app"; // Unique ID for artifact path
+
+        // --- DOM Elements ---
+        const authContainer = document.getElementById('auth-container');
+        const appContainer = document.getElementById('app-container');
+        const loadingOverlay = document.getElementById('loading');
+        const calcDisplay = document.getElementById('calc-display');
+        const calcExpr = document.getElementById('calc-expression');
         
-        let db, auth, userId = null;
-        let isAuthReady = false;
+        // --- Authentication Logic ---
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                showLoading(true);
+                authContainer.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                appContainer.classList.add('flex');
+                
+                // Load User Settings First
+                await loadSettings();
+                // Then Load Transactions
+                subscribeTransactions();
+                showLoading(false);
+            } else {
+                currentUser = null;
+                authContainer.classList.remove('hidden');
+                appContainer.classList.add('hidden');
+                appContainer.classList.remove('flex');
+                document.getElementById('transaction-list').innerHTML = '';
+            }
+        });
+
+        window.handleLogin = async () => {
+            const email = document.getElementById('login-email').value;
+            const pass = document.getElementById('login-password').value;
+            try {
+                await signInWithEmailAndPassword(auth, email, pass);
+            } catch (error) {
+                alert("登入失敗: " + error.message);
+            }
+        };
+
+        window.handleRegister = async () => {
+            const email = document.getElementById('reg-email').value;
+            const pass = document.getElementById('reg-password').value;
+            try {
+                await createUserWithEmailAndPassword(auth, email, pass);
+                // Create default settings for new user
+                await initDefaultSettings();
+            } catch (error) {
+                alert("註冊失敗: " + error.message);
+            }
+        };
+
+        window.logout = () => signOut(auth);
+
+        window.toggleAuth = (mode) => {
+            if (mode === 'register') {
+                document.getElementById('login-form').classList.add('hidden');
+                document.getElementById('register-form').classList.remove('hidden');
+            } else {
+                document.getElementById('register-form').classList.add('hidden');
+                document.getElementById('login-form').classList.remove('hidden');
+            }
+        };
+
+        // --- Data Management ---
         
-        // 將核心函式暴露給 HTML 呼叫 (確保可以在 onclick 中使用)
-        window.addRecord = addRecord;
+        // Helper for path consistency
+        // Using strict artifact path structure as per system instructions for generated apps
+        const getUserPath = () => `artifacts/${appId}/users/${currentUser.uid}`;
 
-        /**
-         * 顯示自定義訊息（替代 alert()）
-         * @param {string} message - 訊息內容
-         * @param {'success' | 'error' | 'warning'} type - 訊息類型
-         */
-        function alertMessage(message, type) {
-            const messageArea = document.getElementById('message-area');
-            let color = 'bg-blue-100 border-blue-500 text-blue-700';
-            if (type === 'error') color = 'bg-red-100 border-red-500 text-red-700';
-            if (type === 'success') color = 'bg-green-100 border-green-500 text-green-700';
-            if (type === 'warning') color = 'bg-yellow-100 border-yellow-500 text-yellow-700';
-
-            messageArea.innerHTML = `
-                <div class="p-3 border-l-4 rounded-lg shadow-md ${color} transition-opacity duration-300" role="alert">
-                    <p class="font-bold">${type === 'success' ? '成功' : type === 'error' ? '錯誤' : '注意'}:</p>
-                    <p>${message}</p>
-                </div>
-            `;
-            // 自動清除訊息
-            setTimeout(() => {
-                messageArea.innerHTML = '';
-            }, 5000);
-        }
-
-        async function initializeFirebase() {
-            try {
-                // 啟用 Firestore Debug 模式 (方便在 Console 中查看問題)
-                setLogLevel('debug');
-
-                const app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-
-                // 處理身份驗證
-                const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-                if (authToken) {
-                    await signInWithCustomToken(auth, authToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                // 身份驗證狀態監聽
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        isAuthReady = true;
-                        document.getElementById('user-id-display').textContent = `使用者 ID: ${userId}`;
-                        document.getElementById('save-button').textContent = '儲存新紀錄';
-                        document.getElementById('save-button').disabled = false;
-                        
-                        // 身份驗證完成後，啟動即時資料監聽
-                        setupRealtimeListener();
-                    } else {
-                        userId = null;
-                        isAuthReady = false;
-                        document.getElementById('user-id-display').textContent = '未驗證';
-                        document.getElementById('save-button').textContent = '等待身份驗證...';
-                        document.getElementById('save-button').disabled = true;
-                        document.getElementById('loading-text').textContent = '等待連線與身份驗證...';
-                    }
-                });
-
-            } catch (error) {
-                console.error("Firebase 初始化失敗:", error);
-                alertMessage("Firebase 初始化失敗。請檢查設定。", "error");
-                document.getElementById('save-button').textContent = '初始化失敗';
-                document.getElementById('save-button').disabled = true;
-            }
-        }
-
-        // =========================================================
-        // 2. 儲存紀錄的函式 (已修正和強化)
-        // =========================================================
-        async function addRecord() {
-            if (!isAuthReady || !userId) {
-                alertMessage("請先等待身份驗證完成才能儲存紀錄。", "warning");
-                return;
-            }
-
-            const recordInput = document.getElementById('record-input');
-            const content = recordInput.value.trim();
-
-            if (content === "") {
-                alertMessage("請輸入紀錄內容。", "warning");
-                return;
-            }
-
-            try {
-                // 設定私人儲存路徑：/artifacts/{appId}/users/{userId}/records
-                const recordsRef = collection(db, `/artifacts/${appId}/users/${userId}/records`);
-                
-                const newRecord = {
-                    content: content,
-                    // 使用 ISO 格式時間戳，因為 serverTimestamp 在此環境中可能較難處理
-                    createdAt: new Date().toISOString(), 
-                    userId: userId 
-                };
-
-                // 使用 addDoc 來新增文件，Firebase 會自動生成文件 ID
-                await addDoc(recordsRef, newRecord);
-                
-                recordInput.value = ''; // 清空輸入欄位
-                alertMessage("紀錄儲存成功！", "success");
-            } catch (error) {
-                console.error("Error adding document: ", error);
-                // 提供詳細錯誤訊息給使用者
-                alertMessage(`儲存紀錄時發生錯誤: ${error.message}`, "error");
-            }
-        }
-
-        // =========================================================
-        // 3. 即時資料監聽函式
-        // =========================================================
-        function setupRealtimeListener() {
-            if (!db || !userId) return;
-
-            const recordsList = document.getElementById('records-list');
-            const loadingText = document.getElementById('loading-text');
-
-            // 設置查詢：從私人路徑中取得紀錄
-            const recordsQuery = query(
-                collection(db, `/artifacts/${appId}/users/${userId}/records`),
-                orderBy('createdAt', 'desc') // 依據建立時間倒序排序
-            );
-
-            // 使用 onSnapshot 進行即時監聽
-            onSnapshot(recordsQuery, (snapshot) => {
-                const records = [];
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    records.push({ id: doc.id, ...data });
-                });
-
-                if (loadingText) loadingText.remove(); // 移除載入中文字
-
-                if (records.length === 0) {
-                    recordsList.innerHTML = '<p class="text-center text-gray-400 p-4">目前沒有任何紀錄。開始新增吧！</p>';
-                } else {
-                    // 渲染紀錄清單
-                    recordsList.innerHTML = records.map(record => `
-                        <div class="bg-gray-50 p-4 rounded-lg shadow-sm border border-gray-200">
-                            <p class="text-gray-800 whitespace-pre-wrap">${record.content}</p>
-                            <p class="text-xs text-gray-400 mt-2">
-                                建立時間: ${new Date(record.createdAt).toLocaleString()}
-                                (ID: ${record.id.substring(0, 5)}...)
-                            </p>
-                        </div>
-                    `).join('');
-                }
-
-            }, (error) => {
-                console.error("即時監聽發生錯誤: ", error);
-                recordsList.innerHTML = `<p class="text-center text-red-500 p-4">無法載入紀錄: ${error.message}</p>`;
+        async function initDefaultSettings() {
+            const defaultCats = [
+                { name: "飲食", budget: 6000 },
+                { name: "交通", budget: 2000 },
+                { name: "娛樂", budget: 3000 },
+                { name: "購物", budget: 5000 },
+                { name: "其他", budget: 1000 }
+            ];
+            const defaultMethods = ["現金", "信用卡"];
+            
+            // FIX: Added 'config' collection to ensure path depth is even (6 segments)
+            await setDoc(doc(db, getUserPath(), "config", "settings"), {
+                categories: defaultCats,
+                paymentMethods: defaultMethods
             });
         }
 
+        async function loadSettings() {
+            // FIX: Added 'config' collection to ensure path depth is even (6 segments)
+            const docRef = doc(db, getUserPath(), "config", "settings");
+            const docSnap = await getDoc(docRef);
 
-        // 應用程式啟動
-        document.addEventListener('DOMContentLoaded', initializeFirebase);
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                categories = data.categories || [];
+                paymentMethods = data.paymentMethods || [];
+            } else {
+                await initDefaultSettings();
+                categories = [{ name: "飲食", budget: 6000 }]; // Fallback
+                paymentMethods = ["現金"];
+            }
+            renderSettings();
+        }
+
+        function subscribeTransactions() {
+            // This path is valid (5 segments for collection)
+            const q = query(collection(db, getUserPath(), "data")); 
+            
+            onSnapshot(q, (snapshot) => {
+                transactions = [];
+                snapshot.forEach((doc) => {
+                    transactions.push({ id: doc.id, ...doc.data() });
+                });
+                // Sort by date desc in JS to avoid complex index requirements
+                transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+                renderTransactions();
+                updateMonthTotal();
+            }, (error) => {
+                console.error("Error fetching transactions: ", error);
+            });
+        }
+
+        // --- UI Rendering ---
+
+        function renderTransactions() {
+            const list = document.getElementById('transaction-list');
+            list.innerHTML = '';
+            
+            if (transactions.length === 0) {
+                list.innerHTML = `<div class="text-center text-gray-400 mt-10">尚無紀錄</div>`;
+                return;
+            }
+
+            transactions.forEach(t => {
+                const el = document.createElement('div');
+                el.className = "bg-white p-3 border-b flex justify-between items-center hover:bg-gray-50 cursor-pointer";
+                el.onclick = () => editTransaction(t);
+                el.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="bg-blue-100 text-blue-600 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm">
+                            ${t.category.substring(0, 1)}
+                        </div>
+                        <div>
+                            <div class="font-bold text-gray-800">${t.category}</div>
+                            <div class="text-xs text-gray-500">${t.date} · ${t.payment} ${t.note ? '· ' + t.note : ''}</div>
+                        </div>
+                    </div>
+                    <div class="font-bold text-gray-800">$${t.amount}</div>
+                `;
+                list.appendChild(el);
+            });
+        }
+
+        function renderSettings() {
+            // Categories
+            const catList = document.getElementById('category-settings-list');
+            catList.innerHTML = '';
+            categories.forEach((c, index) => {
+                const div = document.createElement('div');
+                div.className = "flex justify-between items-center bg-white p-3 rounded shadow-sm border";
+                div.innerHTML = `
+                    <div>
+                        <span class="font-bold text-gray-700">${c.name}</span>
+                        <span class="text-xs text-gray-500 block">預算: $${c.budget}</span>
+                    </div>
+                    <button onclick="deleteCategory(${index})" class="text-red-500 hover:text-red-700"><i class="fa-solid fa-trash"></i></button>
+                `;
+                catList.appendChild(div);
+            });
+
+            // Payments
+            const payList = document.getElementById('payment-settings-list');
+            payList.innerHTML = '';
+            paymentMethods.forEach((p, index) => {
+                const span = document.createElement('span');
+                span.className = "bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-sm flex items-center gap-2";
+                span.innerHTML = `${p} <button onclick="deletePayment(${index})" class="text-gray-500 hover:text-red-500">×</button>`;
+                payList.appendChild(span);
+            });
+        }
+
+        function updateMonthTotal() {
+            const today = new Date();
+            const currentMonth = today.toISOString().slice(0, 7); // YYYY-MM
+            
+            const total = transactions
+                .filter(t => t.date.startsWith(currentMonth))
+                .reduce((sum, t) => sum + Number(t.amount), 0);
+            
+            document.getElementById('month-total').innerText = `$${total}`;
+        }
+
+        // --- Calculator Logic ---
+        let currentCalc = "0";
+        let isResult = false;
+
+        window.calcInput = (val) => {
+            if (currentCalc === "0" || isResult) {
+                currentCalc = val;
+                isResult = false;
+            } else {
+                currentCalc += val;
+            }
+            updateDisplay();
+        };
+
+        window.calcOp = (op) => {
+            const lastChar = currentCalc.slice(-1);
+            if (['+', '-', '*', '/'].includes(lastChar)) return;
+            currentCalc += op;
+            isResult = false;
+            updateDisplay();
+        };
+
+        window.calcClear = () => {
+            currentCalc = "0";
+            calcExpr.innerText = "";
+            updateDisplay();
+        };
+
+        function evaluateCalc() {
+            try {
+                // simple evaluation
+                const result = Function('"use strict";return (' + currentCalc + ')')();
+                currentCalc = String(Math.round(result * 100) / 100); // Round to 2 decimals
+                isResult = true;
+                updateDisplay();
+                return Number(currentCalc);
+            } catch (e) {
+                calcDisplay.innerText = "Error";
+                return 0;
+            }
+        }
+
+        function updateDisplay() {
+            // Replace * with × and / with ÷ for display
+            let displayStr = currentCalc.replace(/\*/g, '×').replace(/\//g, '÷');
+            calcDisplay.innerText = displayStr;
+        }
+
+        // --- Modal & Form Logic ---
+        let selectedCategory = null;
+
+        window.openModal = () => {
+            document.getElementById('input-modal').classList.remove('hidden');
+            document.getElementById('modal-title').innerText = "新增支出";
+            
+            // Reset fields
+            currentCalc = "0";
+            calcExpr.innerText = "";
+            updateDisplay();
+            document.getElementById('input-date').valueAsDate = new Date();
+            document.getElementById('input-note').value = "";
+            
+            renderModalChoices();
+            editMode = false;
+            currentEditId = null;
+            
+            // Add Delete button if editing (logic handled in editTransaction)
+            const existingDelBtn = document.getElementById('btn-delete-trans');
+            if(existingDelBtn) existingDelBtn.remove();
+        };
+
+        window.closeModal = () => {
+            document.getElementById('input-modal').classList.add('hidden');
+        };
+
+        window.editTransaction = (t) => {
+            openModal();
+            document.getElementById('modal-title').innerText = "編輯支出";
+            editMode = true;
+            currentEditId = t.id;
+
+            currentCalc = String(t.amount);
+            updateDisplay();
+            document.getElementById('input-date').value = t.date;
+            document.getElementById('input-note').value = t.note || "";
+            document.getElementById('input-payment').value = t.payment;
+            
+            selectCategory(t.category);
+
+            // Add Delete Button
+            const header = document.querySelector('#input-modal .flex.justify-between');
+            if (!document.getElementById('btn-delete-trans')) {
+                const delBtn = document.createElement('button');
+                delBtn.id = 'btn-delete-trans';
+                delBtn.innerHTML = '<i class="fa-solid fa-trash"></i>';
+                delBtn.className = "text-red-500 p-2 mr-2";
+                delBtn.onclick = deleteCurrentTransaction;
+                header.insertBefore(delBtn, header.lastElementChild);
+            }
+        };
+
+        function renderModalChoices() {
+            // Categories
+            const chips = document.getElementById('category-chips');
+            chips.innerHTML = '';
+            categories.forEach((c, i) => {
+                const btn = document.createElement('button');
+                btn.className = `whitespace-nowrap px-4 py-2 rounded-full text-sm border transition ${i===0 ? 'bg-blue-600 text-white border-blue-600' : 'text-gray-600 border-gray-300'}`;
+                btn.innerText = c.name;
+                btn.onclick = () => selectCategory(c.name);
+                if (i === 0) selectedCategory = c.name;
+                chips.appendChild(btn);
+            });
+
+            // Payment Methods
+            const select = document.getElementById('input-payment');
+            select.innerHTML = '';
+            paymentMethods.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p;
+                opt.innerText = p;
+                select.appendChild(opt);
+            });
+        }
+
+        window.selectCategory = (name) => {
+            selectedCategory = name;
+            const btns = document.getElementById('category-chips').children;
+            Array.from(btns).forEach(btn => {
+                if (btn.innerText === name) {
+                    btn.className = "whitespace-nowrap px-4 py-2 rounded-full text-sm border transition bg-blue-600 text-white border-blue-600";
+                } else {
+                    btn.className = "whitespace-nowrap px-4 py-2 rounded-full text-sm border transition text-gray-600 border-gray-300";
+                }
+            });
+        };
+
+        // --- Core Business Logic ---
+
+        window.saveTransaction = async () => {
+            const amount = evaluateCalc(); // Evaluate current expression
+            if (amount <= 0) {
+                alert("金額必須大於 0");
+                return;
+            }
+
+            const date = document.getElementById('input-date').value;
+            const payment = document.getElementById('input-payment').value;
+            const note = document.getElementById('input-note').value;
+
+            if (!selectedCategory) {
+                alert("請選擇分類");
+                return;
+            }
+
+            const data = {
+                date,
+                amount,
+                category: selectedCategory,
+                payment,
+                note,
+                timestamp: new Date().toISOString()
+            };
+
+            showLoading(true);
+            try {
+                // Check Budget Alert BEFORE saving (or parallel)
+                await checkBudget(selectedCategory, amount, date);
+
+                if (editMode && currentEditId) {
+                    await updateDoc(doc(db, getUserPath(), "data", currentEditId), data);
+                } else {
+                    await addDoc(collection(db, getUserPath(), "data"), data);
+                }
+                closeModal();
+            } catch (error) {
+                console.error(error);
+                alert("儲存失敗");
+            }
+            showLoading(false);
+        };
+
+        window.deleteCurrentTransaction = async () => {
+            if (!confirm("確定要刪除此紀錄嗎?")) return;
+            showLoading(true);
+            try {
+                await deleteDoc(doc(db, getUserPath(), "data", currentEditId));
+                closeModal();
+            } catch (err) {
+                alert("刪除失敗");
+            }
+            showLoading(false);
+        };
+
+        // Budget Checking Logic
+        async function checkBudget(categoryName, newAmount, dateStr) {
+            const catSettings = categories.find(c => c.name === categoryName);
+            if (!catSettings || !catSettings.budget) return; // No budget set
+
+            const budget = Number(catSettings.budget);
+            const monthPrefix = dateStr.slice(0, 7); // YYYY-MM
+            
+            // Calculate existing total for this month/category
+            // Note: If editing, we should subtract the old amount, but for simplicity,
+            // we'll fetch fresh from memory (transactions array) excluding current ID if editing
+            let currentUsed = transactions
+                .filter(t => t.category === categoryName && t.date.startsWith(monthPrefix) && t.id !== currentEditId)
+                .reduce((sum, t) => sum + Number(t.amount), 0);
+            
+            const totalAfter = currentUsed + newAmount;
+            const ratio = totalAfter / budget;
+            
+            let alertData = null;
+            if (ratio > 1) {
+                alertData = { title: "已超支!", msg: `本月「${categoryName}」已超支 ${(ratio*100).toFixed(0)}%!`, color: "red" };
+            } else if (ratio >= 0.9) {
+                alertData = { title: "預算告急", msg: `本月「${categoryName}」已達預算 90%`, color: "orange" };
+            } else if (ratio >= 0.7) {
+                alertData = { title: "注意開銷", msg: `本月「${categoryName}」已達預算 70%`, color: "yellow" };
+            } else if (ratio >= 0.5 && ratio < 0.55) { // Just alert once around 50% usually, strict check here to avoid spam
+                alertData = { title: "溫馨提醒", msg: `本月「${categoryName}」已達預算 50%`, color: "blue" };
+            }
+
+            if (alertData) {
+                showAlert(alertData.title, alertData.msg, alertData.color);
+            }
+        }
+
+        function showAlert(title, msg, colorType) {
+            const modal = document.getElementById('alert-modal');
+            const icon = document.getElementById('alert-icon');
+            const t = document.getElementById('alert-title');
+            const m = document.getElementById('alert-msg');
+
+            t.innerText = title;
+            m.innerText = msg;
+            
+            if(colorType === 'red') { icon.innerText = '🚨'; t.className = "text-xl font-bold mb-2 text-red-600"; }
+            else if(colorType === 'orange') { icon.innerText = '⚠️'; t.className = "text-xl font-bold mb-2 text-orange-600"; }
+            else { icon.innerText = '💡'; t.className = "text-xl font-bold mb-2 text-blue-600"; }
+
+            modal.classList.remove('hidden');
+        }
+
+        // --- Settings Logic ---
+        window.addCategory = async () => {
+            const name = document.getElementById('new-cat-name').value.trim();
+            const budget = document.getElementById('new-cat-budget').value;
+            if(!name || !budget) return alert("請輸入名稱與預算");
+
+            categories.push({ name, budget: Number(budget) });
+            await saveSettings();
+            document.getElementById('new-cat-name').value = '';
+            document.getElementById('new-cat-budget').value = '';
+            renderSettings();
+        };
+
+        window.deleteCategory = async (index) => {
+            if(!confirm("確定刪除此分類?")) return;
+            categories.splice(index, 1);
+            await saveSettings();
+            renderSettings();
+        };
+
+        window.addPaymentMethod = async () => {
+            const name = document.getElementById('new-pay-method').value.trim();
+            if(!name) return;
+            paymentMethods.push(name);
+            await saveSettings();
+            document.getElementById('new-pay-method').value = '';
+            renderSettings();
+        };
+
+        window.deletePayment = async (index) => {
+            if(!confirm("確定刪除此支付方式?")) return;
+            paymentMethods.splice(index, 1);
+            await saveSettings();
+            renderSettings();
+        };
+
+        async function saveSettings() {
+            showLoading(true);
+            try {
+                // FIX: Added 'config' collection to ensure path depth is even (6 segments)
+                await updateDoc(doc(db, getUserPath(), "config", "settings"), {
+                    categories,
+                    paymentMethods
+                });
+            } catch (e) {
+                console.error(e);
+                alert("設定儲存失敗");
+            }
+            showLoading(false);
+        }
+
+        // --- Navigation ---
+        window.switchView = (view) => {
+            const main = document.getElementById('main-view');
+            const set = document.getElementById('settings-view');
+            const homeBtn = document.getElementById('nav-home');
+            const setBtn = document.getElementById('nav-settings');
+            const headerTitle = document.getElementById('header-title');
+
+            if (view === 'home') {
+                main.classList.remove('hidden');
+                set.classList.add('hidden');
+                headerTitle.innerText = "本月支出";
+                homeBtn.classList.add('text-blue-600'); homeBtn.classList.remove('text-gray-400');
+                setBtn.classList.add('text-gray-400'); setBtn.classList.remove('text-blue-600');
+            } else {
+                main.classList.add('hidden');
+                set.classList.remove('hidden');
+                headerTitle.innerText = "設定";
+                setBtn.classList.add('text-blue-600'); setBtn.classList.remove('text-gray-400');
+                homeBtn.classList.add('text-gray-400'); homeBtn.classList.remove('text-blue-600');
+            }
+        };
+
+        function showLoading(show) {
+            if (show) loadingOverlay.classList.remove('hidden');
+            else loadingOverlay.classList.add('hidden');
+        }
     </script>
 </body>
 </html>
