@@ -97,9 +97,32 @@
         // 設定 Firestore 紀錄等級 (Debug 用)
         setLogLevel('Debug');
 
+        // 為了確保在非 Canvas 環境中也能執行，我們提供一個備用的 Firebase Config
+        const defaultFirebaseConfig = {
+            apiKey: "AIzaSyBJcP4HOoVFnbzLT-jdnrW1AtAWXVfjEaM",
+            authDomain: "my-expense-tracker-574dd.firebaseapp.com",
+            projectId: "my-expense-tracker-574dd",
+            storageBucket: "my-expense-tracker-574dd.firebasestorage.app",
+            messagingSenderId: "514938495732",
+            appId: "1:514938495732:web:bb3529eca4f2db547b74a1",
+            measurementId: "G-CDTCB6MFZ3"
+        };
+
         // --- 2. 存取環境提供的全域變數 ---
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        
+        // 優先使用環境變數，如果沒有，則使用預設配置
+        let firebaseConfig = defaultFirebaseConfig;
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            try {
+                // 如果環境變數存在，嘗試解析它
+                firebaseConfig = JSON.parse(__firebase_config);
+            } catch (e) {
+                console.error("解析 __firebase_config 失敗，使用預設配置。", e);
+                // 保持使用 defaultFirebaseConfig
+            }
+        }
+        
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         
         // UI 元素
@@ -136,9 +159,8 @@
         // --- 4. 初始化 Firebase 與匿名登入 ---
         async function initializeAppAndAuth() {
             try {
-                if (!firebaseConfig) {
-                    throw new Error("Firebase 設定檔遺失。");
-                }
+                // 由於我們已提供 defaultFirebaseConfig 備用，此處不再需要檢查
+                // if (!firebaseConfig) { throw new Error("Firebase 設定檔遺失。"); }
 
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
@@ -172,7 +194,8 @@
                 loadingOverlay.classList.add('hidden');
                 appContainer.classList.remove('hidden');
                 userIdDisplay.textContent = "登入失敗，無法使用資料庫功能。";
-                showMessage(`錯誤：Firebase 登入失敗。${error.message}`, true);
+                // 顯示一般錯誤訊息，避免再次提到「設定檔遺失」
+                showMessage(`錯誤：Firebase 連線失敗。${error.message}`, true); 
             }
         }
 
