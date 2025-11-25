@@ -3,1248 +3,227 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>跨平台支出記帳本 (自定義版)</title>
-    <!-- 引入 Tailwind CSS -->
+    <title>紀錄儲存應用程式</title>
+    <!-- 載入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 Lucide icons (用於圖示) -->
-    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        /* 自定義 Tailwind 配置 */
-        :root {
-            --color-primary: #10b981; /* Emerald 500 */
-        }
         /* 使用 Inter 字體 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f7f9fb;
+            background-color: #f4f7f9;
         }
-        /* Calculator Button Style */
-        .calc-btn {
-            @apply p-4 text-2xl font-bold rounded-xl shadow-md transition duration-150 ease-in-out transform hover:scale-[1.05] active:scale-95;
-            min-height: 4rem; /* 確保按鍵夠大適合手機 */
-        }
-        /* Modal Backdrop */
-        .modal-backdrop {
-            background-color: rgba(0, 0, 0, 0.5);
-        }
-        /* 交易列表顯示調整 */
-        .transaction-grid {
-            display: grid;
-            grid-template-areas:
-                "date amount"
-                "category desc";
-            grid-template-columns: 1fr auto;
-            align-items: center;
-        }
-        .tx-date { grid-area: date; font-size: 0.75rem; color: #6b7280; } /* text-xs text-gray-500 */
-        .tx-amount { grid-area: amount; font-weight: bold; font-size: 1.125rem; color: #1f2937; /* dark gray */ }
-        .tx-category { grid-area: category; font-weight: 600; font-size: 0.875rem; margin-top: 4px; } /* text-sm */
-        .tx-description { grid-area: desc; font-size: 0.875rem; color: #4b5563; margin-top: 4px; } /* text-sm */
     </style>
 </head>
-<body class="min-h-screen p-4 sm:p-6 md:p-10">
+<body class="p-4 md:p-8 min-h-screen">
 
-    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50">
-        <div class="flex flex-col items-center">
-            <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-emerald-500"></div>
-            <p class="mt-4 text-lg text-gray-700">正在初始化服務與載入資料...</p>
-        </div>
-    </div>
-
-    <!-- 登入/註冊區塊 -->
-    <div id="auth-section" class="max-w-md mx-auto bg-white shadow-xl rounded-2xl p-6 sm:p-8 mt-12 hidden">
-        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">
-            Email 登入/註冊
-        </h2>
-        <form id="auth-form">
-            <div class="mb-4">
-                <label for="auth-email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input type="email" id="auth-email" placeholder="您的電子郵件" required
-                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150">
-            </div>
-            <div class="mb-6">
-                <label for="auth-password" class="block text-sm font-medium text-gray-700 mb-1">密碼 (至少 6 位元)</label>
-                <input type="password" id="auth-password" placeholder="設定您的密碼" required
-                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150">
-            </div>
-            
-            <div class="flex space-x-4">
-                <button type="button" id="login-btn"
-                        class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-[1.01]">
-                    登入
-                </button>
-                <button type="button" id="signup-btn"
-                        class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-[1.01]">
-                    註冊並登入
-                </button>
-            </div>
-        </form>
-    </div>
-
-    <!-- 應用程式主區塊 -->
-    <div id="app-container" class="hidden max-w-lg mx-auto bg-white shadow-xl rounded-2xl p-6 sm:p-8">
-        <header class="mb-8 flex justify-between items-center">
-            <div>
-                <h1 class="text-3xl font-bold text-gray-800 flex items-center">
-                    <i data-lucide="wallet" class="w-8 h-8 text-emerald-500 mr-2"></i>
-                    每月支出管理
-                </h1>
-                <p id="user-email-display" class="text-sm text-gray-500 mt-1 break-all"></p>
-            </div>
-            <div class="flex space-x-2">
-                 <!-- 設定按鈕 -->
-                 <button id="settings-btn" class="flex items-center text-sm text-gray-500 hover:text-gray-700 p-2 rounded-full hover:bg-gray-100 transition duration-150">
-                    <i data-lucide="settings" class="w-5 h-5"></i>
-                </button>
-                <!-- 登出按鈕 -->
-                <button id="signout-btn" class="flex items-center text-sm text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50 transition duration-150">
-                    <i data-lucide="log-out" class="w-4 h-4"></i>
-                </button>
-            </div>
-        </header>
-
-        <!-- 總餘額區塊 (顯示當月總支出) -->
-        <div class="bg-gray-100 p-6 rounded-xl mb-8 shadow-inner">
-            <h2 class="text-xl font-semibold text-gray-700 mb-2">當月總支出</h2>
-            <p id="total-expense" class="text-4xl font-extrabold text-gray-800">NT$ 0.00</p>
-            <p class="text-xs text-gray-500 mt-2">（此金額為本月所有支出總和）</p>
-        </div>
-
-        <!-- 新增交易表單 -->
-        <section class="mb-8 p-6 border border-gray-200 rounded-xl bg-gray-50">
-            <h2 id="form-title" class="text-xl font-bold text-gray-800 mb-4">新增支出紀錄</h2>
-            <form id="transaction-form">
-                <!-- Hidden field for editing -->
-                <input type="hidden" id="transaction-id" value=""> 
-
-                <!-- 1. 交易日期 (修正順序) -->
-                <div class="mb-4">
-                    <label for="transaction-date" class="block text-sm font-medium text-gray-700 mb-1">日期</label>
-                    <input type="date" id="transaction-date" required
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150 bg-white">
-                </div>
-
-                <!-- 2. 支出分類 (修正順序) -->
-                <div class="mb-4">
-                    <label for="category" class="block text-sm font-medium text-gray-700 mb-1">分類</label>
-                    <select id="category" required 
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150 bg-white">
-                        <option value="">請選擇分類</option>
-                    </select>
-                </div>
-                
-                <!-- 3. 支付工具 (修正順序) -->
-                <div class="mb-4">
-                    <label for="payment-method" class="block text-sm font-medium text-gray-700 mb-1">支付工具</label>
-                    <select id="payment-method" required 
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150 bg-white">
-                        <option value="">請選擇支付工具</option>
-                    </select>
-                </div>
-
-                <!-- 4. 金額 (修正順序 & 允許直接輸入) -->
-                <div class="mb-4">
-                    <label for="amount-input" class="block text-sm font-medium text-gray-700 mb-1">金額 (可直接輸入或使用計算機)</label>
-                    <div id="amount-input-group" class="relative">
-                        <!-- 移除 readonly, 改為 type="number", 這是新的金額輸入框 -->
-                        <input type="number" id="amount-input" value="0" required step="0.01" min="0"
-                               class="w-full px-4 py-2 pr-12 text-2xl font-bold text-gray-800 border border-gray-300 rounded-lg bg-white focus:ring-emerald-500 focus:border-emerald-500 transition duration-150">
-                        <button type="button" id="open-calculator-btn" class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700">
-                            <i data-lucide="calculator" class="w-6 h-6"></i>
-                        </button>
-                    </div>
-                    <!-- 移除 amount-value hidden input，直接使用 amount-input 作為唯一金額來源 -->
-                </div>
-                
-                <!-- 5. 描述/備註 (修正順序 & 非必填) -->
-                <div class="mb-6">
-                    <label for="description" class="block text-sm font-medium text-gray-700 mb-1">備註 (非必填)</label>
-                    <!-- 移除 required 屬性 -->
-                    <input type="text" id="description" placeholder="例如：星巴克咖啡、週末購物"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150">
-                </div>
-
-                
-                <button type="submit" id="submit-btn"
-                        class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-[1.01]">
-                    儲存紀錄
-                </button>
-            </form>
-        </section>
-
-        <!-- 交易記錄列表 -->
-        <section>
-            <h2 class="text-xl font-bold text-gray-800 mb-4">交易記錄 (本月)</h2>
-            <div id="transactions-list" class="space-y-3">
-                <!-- 交易項目將會在這裡動態插入 -->
-                <p id="empty-state" class="text-center text-gray-500 p-4 border border-dashed rounded-lg">尚無交易記錄。</p>
-            </div>
-        </section>
+    <div id="app-container" class="max-w-3xl mx-auto bg-white shadow-2xl rounded-xl p-6 md:p-10 transition-all duration-300">
+        <h1 class="text-3xl font-bold text-center text-blue-700 mb-6">我的即時紀錄本</h1>
         
-        <!-- 訊息彈窗 (showMessage) -->
-        <div id="message-box" class="fixed bottom-4 right-4 text-white p-3 rounded-xl shadow-xl hidden transition-opacity duration-300 z-50"></div>
+        <!-- 訊息提示區域 -->
+        <div id="message-area" class="mb-4"></div>
 
-        <!-- 預算提醒彈窗 (Budget Alert Modal) -->
-        <div id="budget-alert-modal" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center z-40 p-4">
-            <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm transform transition-all duration-300 scale-100">
-                <div class="flex items-center mb-4">
-                    <i data-lucide="bell-ring" id="alert-icon" class="w-8 h-8 text-red-500 mr-3"></i>
-                    <h3 id="alert-title" class="text-xl font-bold text-gray-800">預算警報！</h3>
-                </div>
-                <p id="alert-message" class="text-gray-700 mb-6"></p>
-                <button id="close-alert-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-xl transition duration-150">確認</button>
-            </div>
-        </div>
-    </div>
+        <!-- 使用者 ID 顯示 (用於協助除錯路徑) -->
+        <p id="user-id-display" class="text-sm text-gray-500 mb-6 text-center"></p>
 
-    <!-- 計算機模態視窗 (Calculator Modal) -->
-    <div id="calculator-modal" class="fixed inset-0 modal-backdrop hidden flex items-end justify-center z-50">
-        <div class="bg-white rounded-t-3xl shadow-2xl w-full max-w-md p-4 sm:p-6 transition-all duration-300 transform translate-y-0">
-            <h3 class="text-xl font-bold text-gray-800 mb-4 text-center">金額計算機</h3>
-            <div class="bg-gray-200 p-4 rounded-xl mb-4 text-right overflow-hidden shadow-inner">
-                <div class="text-gray-500 text-sm h-5" id="calc-history"></div>
-                <div class="text-4xl font-mono font-extrabold text-gray-800 h-10" id="calc-display">0</div>
-            </div>
+        <!-- 紀錄輸入區塊 -->
+        <div class="mb-8 p-4 bg-blue-50 rounded-lg shadow-inner">
+            <textarea id="record-input" rows="3" placeholder="在這裡輸入您的新紀錄..." 
+                class="w-full p-3 border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-150 text-gray-700"></textarea>
             
-            <div class="grid grid-cols-4 gap-3">
-                <button type="button" class="calc-btn bg-red-200 text-red-700 col-span-2" data-key="clear">AC</button>
-                <button type="button" class="calc-btn bg-gray-300 text-gray-800" data-key="backspace">
-                    <i data-lucide="delete" class="w-6 h-6 mx-auto"></i>
-                </button>
-                <button type="button" class="calc-btn bg-orange-500 text-white" data-key="/">÷</button>
-
-                <button type="button" class="calc-btn bg-gray-100 text-gray-800" data-key="7">7</button>
-                <button type="button" class="calc-btn bg-gray-100 text-gray-800" data-key="8">8</button>
-                <button type="button" class="calc-btn bg-gray-100 text-gray-800" data-key="9">9</button>
-                <button type="button" class="calc-btn bg-orange-500 text-white" data-key="*">×</button>
-
-                <button type="button" class="calc-btn bg-gray-100 text-gray-800" data-key="4">4</button>
-                <button type="button" class="calc-btn bg-gray-100 text-gray-800" data-key="5">5</button>
-                <button type="button" class="calc-btn bg-gray-100 text-gray-800" data-key="6">6</button>
-                <button type="button" class="calc-btn bg-orange-500 text-white" data-key="-">-</button>
-
-                <button type="button" class="calc-btn bg-gray-100 text-gray-800" data-key="1">1</button>
-                <button type="button" class="calc-btn bg-gray-100 text-gray-800" data-key="2">2</button>
-                <button type="button" class="calc-btn bg-gray-100 text-gray-800" data-key="3">3</button>
-                <button type="button" class="calc-btn bg-orange-500 text-white" data-key="+">+</button>
-
-                <button type="button" class="calc-btn bg-gray-100 text-gray-800 col-span-2" data-key="0">0</button>
-                <button type="button" class="calc-btn bg-gray-100 text-gray-800" data-key=".">.</button>
-                <button type="button" class="calc-btn bg-emerald-600 text-white" id="calc-ok-btn" data-key="ok">OK</button>
-            </div>
+            <button onclick="addRecord()" id="save-button"
+                class="w-full mt-3 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition duration-150 ease-in-out transform hover:scale-[1.01] disabled:opacity-50"
+                disabled>
+                儲存新紀錄 (等待初始化...)
+            </button>
         </div>
-    </div>
-    
-    <!-- 設定模態視窗 (Settings Modal) -->
-    <div id="settings-modal" class="fixed inset-0 modal-backdrop hidden flex items-center justify-center z-40 p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg h-[90vh] overflow-hidden flex flex-col transform transition-all duration-300">
-            <div class="p-4 border-b flex justify-between items-center">
-                <h3 class="text-xl font-bold text-gray-800">自定義設定</h3>
-                <button id="close-settings-btn" class="p-2 text-gray-500 hover:text-gray-800">
-                    <i data-lucide="x" class="w-6 h-6"></i>
-                </button>
-            </div>
-            
-            <div class="flex border-b">
-                <button class="tab-btn p-3 flex-1 text-center font-semibold border-b-2" data-tab="categories">支出分類與預算</button>
-                <button class="tab-btn p-3 flex-1 text-center font-semibold border-b-2" data-tab="payments">支付工具</button>
-            </div>
 
-            <!-- 分類設定 Tab -->
-            <div id="categories-tab" class="p-4 overflow-y-auto flex-1">
-                <form id="category-form" class="mb-4 flex space-x-2">
-                    <input type="text" id="cat-name-input" placeholder="分類名稱 (e.g., 娛樂)" required
-                           class="flex-1 px-3 py-2 border border-gray-300 rounded-lg">
-                    <input type="number" id="cat-budget-input" placeholder="每月預算 (NT$)" value="0" min="0" required
-                           class="w-24 px-3 py-2 border border-gray-300 rounded-lg">
-                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition duration-150">新增</button>
-                </form>
-                <div id="categories-list" class="space-y-3">
-                    <!-- 分類列表動態載入 -->
-                </div>
-            </div>
-
-            <!-- 支付工具設定 Tab -->
-            <div id="payments-tab" class="p-4 overflow-y-auto flex-1 hidden">
-                 <form id="payment-form" class="mb-4 flex space-x-2">
-                    <input type="text" id="pm-name-input" placeholder="支付工具名稱 (e.g., 悠遊卡)" required
-                           class="flex-1 px-3 py-2 border border-gray-300 rounded-lg">
-                    <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition duration-150">新增</button>
-                </form>
-                <div id="payments-list" class="space-y-3">
-                    <!-- 支付工具列表動態載入 -->
-                </div>
-            </div>
+        <!-- 紀錄清單區塊 -->
+        <h2 class="text-xl font-semibold text-gray-700 mb-4 border-b pb-2">已儲存的紀錄</h2>
+        <div id="records-list" class="space-y-4">
+            <p class="text-center text-gray-400 p-4" id="loading-text">正在載入紀錄...</p>
+            <!-- 紀錄將在這裡即時顯示 -->
         </div>
+
     </div>
 
-
-    <!-- Firebase SDKs -->
     <script type="module">
-        // --- 1. 引入 Firebase 模組 ---
+        // =========================================================
+        // 1. Firebase 初始化設定與模組匯入 (必須使用 ES Module 格式)
+        // =========================================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { 
-            getAuth, 
-            signInWithEmailAndPassword, 
-            createUserWithEmailAndPassword, 
-            signOut,
-            onAuthStateChanged
-        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, addDoc, deleteDoc, updateDoc, onSnapshot, collection, query, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, setLogLevel, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // 設定 Firestore 紀錄等級 (Debug 用)
-        setLogLevel('Debug');
-
-        // 為了確保在非 Canvas 環境中也能執行，我們提供一個備用的 Firebase Config
-        const defaultFirebaseConfig = {
-            apiKey: "AIzaSyBJcP4HOoVFnbzLT-jdnrW1AtAWXVfjEaM",
-            authDomain: "my-expense-tracker-574dd.firebaseapp.com",
-            projectId: "my-expense-tracker-574dd",
-            storageBucket: "my-expense-tracker-574dd.firebasestorage.app",
-            messagingSenderId: "514938495732",
-            appId: "1:514938495732:web:bb3529eca4f2db547b74a1",
-            measurementId: "G-CDTCB6MFZ3"
-        };
-        
-        // --- 2. 存取環境提供的全域變數 ---
+        // 必須使用的全域變數
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         
-        // 優先使用環境變數
-        let firebaseConfig = defaultFirebaseConfig;
-        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-            try {
-                firebaseConfig = JSON.parse(__firebase_config);
-            } catch (e) {
-                console.error("解析 __firebase_config 失敗，使用預設配置。", e);
-            }
-        }
+        let db, auth, userId = null;
+        let isAuthReady = false;
         
-        // --- 3. 全域狀態與 UI 元素 ---
-        let db;
-        let auth;
-        let currentUserId = null; 
-        let transactions = []; // 儲存所有交易紀錄
-        let categories = []; // 儲存所有分類與預算
-        let paymentMethods = []; // 儲存所有支付工具
-        let unsubscribeListeners = {}; // 儲存所有 onSnapshot 的取消訂閱函式
+        // 將核心函式暴露給 HTML 呼叫 (確保可以在 onclick 中使用)
+        window.addRecord = addRecord;
 
-        // UI 元素
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const appContainer = document.getElementById('app-container');
-        const authSection = document.getElementById('auth-section');
-        const totalExpenseElement = document.getElementById('total-expense');
-        const listElement = document.getElementById('transactions-list');
-        const transactionForm = document.getElementById('transaction-form');
-        const transactionIdInput = document.getElementById('transaction-id');
-        const formTitle = document.getElementById('form-title');
-        const submitBtn = document.getElementById('submit-btn');
-        
-        // 日期輸入欄位
-        const transactionDateInput = document.getElementById('transaction-date');
-        
-        // 備註欄位 (現在非必填)
-        const descriptionInput = document.getElementById('description');
-        
-        const categorySelect = document.getElementById('category');
-        const paymentMethodSelect = document.getElementById('payment-method');
-        
-        // 金額輸入欄位 (可直接輸入)
-        const amountInput = document.getElementById('amount-input');
-        
-        const userEmailDisplay = document.getElementById('user-email-display');
-        const messageBox = document.getElementById('message-box');
-        const budgetAlertModal = document.getElementById('budget-alert-modal');
+        /**
+         * 顯示自定義訊息（替代 alert()）
+         * @param {string} message - 訊息內容
+         * @param {'success' | 'error' | 'warning'} type - 訊息類型
+         */
+        function alertMessage(message, type) {
+            const messageArea = document.getElementById('message-area');
+            let color = 'bg-blue-100 border-blue-500 text-blue-700';
+            if (type === 'error') color = 'bg-red-100 border-red-500 text-red-700';
+            if (type === 'success') color = 'bg-green-100 border-green-500 text-green-700';
+            if (type === 'warning') color = 'bg-yellow-100 border-yellow-500 text-yellow-700';
 
-        // Setting Modal 相關元素
-        const settingsModal = document.getElementById('settings-modal');
-        const settingsBtn = document.getElementById('settings-btn');
-        const closeSettingsBtn = document.getElementById('close-settings-btn');
-        const categoriesTab = document.getElementById('categories-tab');
-        const paymentsTab = document.getElementById('payments-tab');
-        const categoriesList = document.getElementById('categories-list');
-        const paymentsList = document.getElementById('payments-list');
-        const categoryForm = document.getElementById('category-form');
-        const paymentForm = document.getElementById('payment-form');
-        const catNameInput = document.getElementById('cat-name-input');
-        const catBudgetInput = document.getElementById('cat-budget-input');
-        const pmNameInput = document.getElementById('pm-name-input');
-        
-        // Calculator 元素與狀態 (略... 保持不變)
-        const calculatorModal = document.getElementById('calculator-modal');
-        const openCalculatorBtn = document.getElementById('open-calculator-btn');
-        const calcDisplay = document.getElementById('calc-display');
-        const calcHistory = document.getElementById('calc-history');
-        const closeAlertBtn = document.getElementById('close-alert-btn');
-        let calculatorExpression = '';
-        let displayValue = '0';
-        
-        // 預設資料
-        const defaultPaymentMethods = [
-            { name: '現金 (Cash)', color: 'gray-500' },
-            { name: '信用卡 (Credit Card)', color: 'blue-500' },
-            { name: '其他自定義 (Other)', color: 'purple-500' },
-        ];
-        const defaultCategories = [
-            { name: '餐飲 (Food)', budget: 15000, color: 'red-500' },
-            { name: '交通 (Transport)', budget: 3000, color: 'orange-500' },
-            { name: '娛樂 (Entertainment)', budget: 5000, color: 'pink-500' },
-            { name: '生活用品 (Groceries)', budget: 8000, color: 'blue-500' },
-        ];
-
-        // 預設顏色列表 (供分類設定使用)
-        const colorOptions = [
-            'red-500', 'orange-500', 'yellow-500', 'emerald-500', 
-            'blue-500', 'indigo-500', 'purple-500', 'pink-500'
-        ];
-
-        // --- 輔助函式：將日期格式化為 YYYY-MM-DD ---
-        function formatDateToYYYYMMDD(date) {
-            const d = new Date(date);
-            const month = '' + (d.getMonth() + 1);
-            const day = '' + d.getDate();
-            const year = d.getFullYear();
-
-            return [year, month.padStart(2, '0'), day.padStart(2, '0')].join('-');
-        }
-        
-        // 初始化日期欄位為今天
-        transactionDateInput.value = formatDateToYYYYMMDD(new Date());
-
-
-        // --- 4. 輔助函式：顯示訊息彈窗 ---
-        function showMessage(message, isError = false) {
-            messageBox.textContent = message;
-            messageBox.className = `fixed bottom-4 right-4 p-3 rounded-xl shadow-2xl transition-all duration-500 transform z-50 ${isError ? 'bg-red-600' : 'bg-emerald-500'} ${isError ? 'scale-105' : 'scale-100'}`;
-            messageBox.style.display = 'block';
-            
+            messageArea.innerHTML = `
+                <div class="p-3 border-l-4 rounded-lg shadow-md ${color} transition-opacity duration-300" role="alert">
+                    <p class="font-bold">${type === 'success' ? '成功' : type === 'error' ? '錯誤' : '注意'}:</p>
+                    <p>${message}</p>
+                </div>
+            `;
+            // 自動清除訊息
             setTimeout(() => {
-                messageBox.style.opacity = '0';
-                setTimeout(() => {
-                    messageBox.style.display = 'none';
-                    messageBox.style.opacity = '1'; 
-                }, 300);
-            }, 3000);
+                messageArea.innerHTML = '';
+            }, 5000);
         }
 
-        // --- 5. Firebase 服務與路徑設定 ---
-        function initializeServices() {
+        async function initializeFirebase() {
             try {
+                // 啟用 Firestore Debug 模式 (方便在 Console 中查看問題)
+                setLogLevel('debug');
+
                 const app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
-                startAuthListener();
+
+                // 處理身份驗證
+                const authToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+                if (authToken) {
+                    await signInWithCustomToken(auth, authToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // 身份驗證狀態監聽
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        isAuthReady = true;
+                        document.getElementById('user-id-display').textContent = `使用者 ID: ${userId}`;
+                        document.getElementById('save-button').textContent = '儲存新紀錄';
+                        document.getElementById('save-button').disabled = false;
+                        
+                        // 身份驗證完成後，啟動即時資料監聽
+                        setupRealtimeListener();
+                    } else {
+                        userId = null;
+                        isAuthReady = false;
+                        document.getElementById('user-id-display').textContent = '未驗證';
+                        document.getElementById('save-button').textContent = '等待身份驗證...';
+                        document.getElementById('save-button').disabled = true;
+                        document.getElementById('loading-text').textContent = '等待連線與身份驗證...';
+                    }
+                });
+
             } catch (error) {
                 console.error("Firebase 初始化失敗:", error);
-                loadingOverlay.classList.add('hidden');
-                showMessage(`錯誤：Firebase 連線失敗。${error.message}`, true); 
+                alertMessage("Firebase 初始化失敗。請檢查設定。", "error");
+                document.getElementById('save-button').textContent = '初始化失敗';
+                document.getElementById('save-button').disabled = true;
             }
         }
-        
-        // 取得 Firestore 集合路徑
-        function getCollectionPath(collectionName, uid) {
-            return `artifacts/${appId}/users/${uid}/${collectionName}`;
-        }
-        
-        // --- 6. 登入狀態監聽器 (略... 保持不變) ---
-        function startAuthListener() {
-            onAuthStateChanged(auth, (user) => {
-                loadingOverlay.classList.add('hidden');
 
-                if (user) {
-                    currentUserId = user.uid;
-                    userEmailDisplay.textContent = `已登入: ${user.email}`;
-
-                    document.getElementById('auth-section').classList.add('hidden');
-                    appContainer.classList.remove('hidden');
-                    
-                    // 啟動所有資料監聽
-                    startDataListeners(currentUserId);
-                    lucide.createIcons();
-                    
-                } else {
-                    currentUserId = null;
-                    userEmailDisplay.textContent = '';
-                    document.getElementById('auth-section').classList.remove('hidden');
-                    appContainer.classList.add('hidden');
-                    
-                    // 清除 UI
-                    totalExpenseElement.textContent = 'NT$ 0.00';
-                    listElement.innerHTML = `<p class="text-center text-gray-500 p-4 border border-dashed rounded-lg">請登入以查看交易記錄。</p>`;
-                    
-                    // 停止所有資料監聽
-                    Object.values(unsubscribeListeners).forEach(unsubscribe => unsubscribe());
-                    unsubscribeListeners = {};
-                }
-            });
-        }
-        
-        // --- 7. Email/密碼登入/註冊 (略... 保持不變) ---
-        async function handleAuth(isSignUp) {
-            const email = document.getElementById('auth-email').value;
-            const password = document.getElementById('auth-password').value;
-            if (!email || password.length < 6) {
-                showMessage("請輸入有效的 Email，且密碼需至少 6 位元。", true);
+        // =========================================================
+        // 2. 儲存紀錄的函式 (已修正和強化)
+        // =========================================================
+        async function addRecord() {
+            if (!isAuthReady || !userId) {
+                alertMessage("請先等待身份驗證完成才能儲存紀錄。", "warning");
                 return;
             }
+
+            const recordInput = document.getElementById('record-input');
+            const content = recordInput.value.trim();
+
+            if (content === "") {
+                alertMessage("請輸入紀錄內容。", "warning");
+                return;
+            }
+
             try {
-                if (isSignUp) {
-                    await createUserWithEmailAndPassword(auth, email, password);
-                    showMessage("註冊成功！");
-                } else {
-                    await signInWithEmailAndPassword(auth, email, password);
-                    showMessage("登入成功！");
-                }
-                document.getElementById('auth-password').value = '';
+                // 設定私人儲存路徑：/artifacts/{appId}/users/{userId}/records
+                const recordsRef = collection(db, `/artifacts/${appId}/users/${userId}/records`);
+                
+                const newRecord = {
+                    content: content,
+                    // 使用 ISO 格式時間戳，因為 serverTimestamp 在此環境中可能較難處理
+                    createdAt: new Date().toISOString(), 
+                    userId: userId 
+                };
+
+                // 使用 addDoc 來新增文件，Firebase 會自動生成文件 ID
+                await addDoc(recordsRef, newRecord);
+                
+                recordInput.value = ''; // 清空輸入欄位
+                alertMessage("紀錄儲存成功！", "success");
             } catch (error) {
-                let errorMessage = "登入/註冊失敗。";
-                switch (error.code) {
-                    case 'auth/user-not-found':
-                    case 'auth/wrong-password':
-                        errorMessage = 'Email 或密碼錯誤。';
-                        break;
-                    case 'auth/email-already-in-use':
-                        errorMessage = '此 Email 已被註冊。';
-                        break;
-                    default:
-                        console.error("Auth 錯誤:", error);
-                        errorMessage += ` (${error.code})`;
-                }
-                showMessage(errorMessage, true);
+                console.error("Error adding document: ", error);
+                // 提供詳細錯誤訊息給使用者
+                alertMessage(`儲存紀錄時發生錯誤: ${error.message}`, "error");
             }
         }
-        
-        // --- 8. 整合資料監聽器 (略... 保持不變) ---
-        function startDataListeners(uid) {
-            // 監聽交易紀錄 (expenses)
-            const expenseColRef = collection(db, getCollectionPath('expenses', uid));
-            unsubscribeListeners.expenses = onSnapshot(expenseColRef, (snapshot) => {
-                transactions = [];
-                const now = new Date();
-                const currentMonth = now.getMonth();
-                const currentYear = now.getFullYear();
 
+        // =========================================================
+        // 3. 即時資料監聽函式
+        // =========================================================
+        function setupRealtimeListener() {
+            if (!db || !userId) return;
+
+            const recordsList = document.getElementById('records-list');
+            const loadingText = document.getElementById('loading-text');
+
+            // 設置查詢：從私人路徑中取得紀錄
+            const recordsQuery = query(
+                collection(db, `/artifacts/${appId}/users/${userId}/records`),
+                orderBy('createdAt', 'desc') // 依據建立時間倒序排序
+            );
+
+            // 使用 onSnapshot 進行即時監聽
+            onSnapshot(recordsQuery, (snapshot) => {
+                const records = [];
                 snapshot.forEach(doc => {
                     const data = doc.data();
-                    // 交易日期現在是儲存在 date 欄位，並且是 Timestamp 物件
-                    const transactionDate = data.date ? data.date.toDate() : new Date();
-                    
-                    // 只儲存當月的交易紀錄
-                    if (transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear) {
-                         transactions.push({
-                            id: doc.id,
-                            description: data.description,
-                            amount: data.amount, // 注意: amount 已經是以負值儲存的支出
-                            categoryId: data.categoryId,
-                            paymentMethodId: data.paymentMethodId,
-                            date: transactionDate, // 使用使用者選擇的日期
-                        });
-                    }
+                    records.push({ id: doc.id, ...data });
                 });
 
-                // 客戶端排序：依照交易日期 (新的在前面)
-                transactions.sort((a, b) => b.date.getTime() - a.date.getTime());
-                
-                renderTransactions(transactions);
-                calculateTotalExpense(transactions);
+                if (loadingText) loadingText.remove(); // 移除載入中文字
+
+                if (records.length === 0) {
+                    recordsList.innerHTML = '<p class="text-center text-gray-400 p-4">目前沒有任何紀錄。開始新增吧！</p>';
+                } else {
+                    // 渲染紀錄清單
+                    recordsList.innerHTML = records.map(record => `
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-sm border border-gray-200">
+                            <p class="text-gray-800 whitespace-pre-wrap">${record.content}</p>
+                            <p class="text-xs text-gray-400 mt-2">
+                                建立時間: ${new Date(record.createdAt).toLocaleString()}
+                                (ID: ${record.id.substring(0, 5)}...)
+                            </p>
+                        </div>
+                    `).join('');
+                }
 
             }, (error) => {
-                console.error("監聽交易記錄失敗:", error);
-                showMessage("無法載入交易記錄。", true);
-            });
-
-            // 監聽分類 (categories)
-            const categoryColRef = collection(db, getCollectionPath('categories', uid));
-            unsubscribeListeners.categories = onSnapshot(categoryColRef, (snapshot) => {
-                categories = [];
-                snapshot.forEach(doc => categories.push({ id: doc.id, ...doc.data() }));
-                
-                if (categories.length === 0) {
-                    // 如果沒有分類，則自動添加預設分類
-                    addDefaultData(defaultCategories, 'categories', uid);
-                }
-                renderCategoryOptions(categories);
-                renderSettingsLists(); // 重新渲染設定頁面列表
-            }, (error) => console.error("監聽分類失敗:", error));
-
-            // 監聽支付工具 (paymentMethods)
-            const paymentColRef = collection(db, getCollectionPath('paymentMethods', uid));
-            unsubscribeListeners.paymentMethods = onSnapshot(paymentColRef, (snapshot) => {
-                paymentMethods = [];
-                snapshot.forEach(doc => paymentMethods.push({ id: doc.id, ...doc.data() }));
-
-                if (paymentMethods.length === 0) {
-                    // 如果沒有支付工具，則自動添加預設工具
-                    addDefaultData(defaultPaymentMethods, 'paymentMethods', uid);
-                }
-                renderPaymentOptions(paymentMethods);
-                renderSettingsLists(); // 重新渲染設定頁面列表
-            }, (error) => console.error("監聽支付工具失敗:", error));
-        }
-
-        // --- 9. 自動添加預設資料 (略... 保持不變) ---
-        async function addDefaultData(data, collectionName, uid) {
-            const colRef = collection(db, getCollectionPath(collectionName, uid));
-            console.log(`正在為 ${uid} 添加預設 ${collectionName}。`);
-            for (const item of data) {
-                try {
-                    // 為預設分類隨機分配一個顏色
-                    if (collectionName === 'categories') {
-                        const randomColor = colorOptions[Math.floor(Math.random() * colorOptions.length)];
-                        item.color = randomColor;
-                    }
-                    await addDoc(colRef, item);
-                } catch (e) {
-                    console.error(`添加預設 ${collectionName} 失敗:`, e);
-                }
-            }
-        }
-        
-        // --- 10. 渲染下拉式選單 (略... 保持不變) ---
-        function renderCategoryOptions(categoryList) {
-            categorySelect.innerHTML = '<option value="">請選擇分類</option>';
-            categoryList.forEach(cat => {
-                const option = document.createElement('option');
-                option.value = cat.id;
-                option.textContent = `${cat.name} (預算: NT$ ${cat.budget ? cat.budget.toLocaleString() : '無'})`;
-                categorySelect.appendChild(option);
+                console.error("即時監聽發生錯誤: ", error);
+                recordsList.innerHTML = `<p class="text-center text-red-500 p-4">無法載入紀錄: ${error.message}</p>`;
             });
         }
 
-        function renderPaymentOptions(paymentList) {
-            paymentMethodSelect.innerHTML = '<option value="">請選擇支付工具</option>';
-            paymentList.forEach(pm => {
-                const option = document.createElement('option');
-                option.value = pm.id;
-                option.textContent = pm.name;
-                paymentMethodSelect.appendChild(option);
-            });
-        }
-        
-        // --- 11. 計算當月總支出 (略... 保持不變) ---
-        function calculateTotalExpense(transactionsList) {
-            const total = transactionsList.reduce((sum, transaction) => sum + transaction.amount, 0);
-            const absoluteTotal = Math.abs(total);
-            const formattedTotal = absoluteTotal.toFixed(2).toLocaleString('en-US');
-            
-            totalExpenseElement.textContent = `NT$ ${formattedTotal}`;
-        }
-        
-        // --- 12. 預算提醒檢查 (略... 保持不變) ---
-        function checkBudgetAlert(newTransaction) {
-            const categoryId = newTransaction.categoryId;
-            const newAmount = Math.abs(newTransaction.amount);
-            
-            // 使用新交易的日期來確定月份
-            const newTxDate = newTransaction.date; 
-            const txMonth = newTxDate.getMonth();
-            const txYear = newTxDate.getFullYear();
 
-            const targetCategory = categories.find(c => c.id === categoryId);
-            if (!targetCategory || !targetCategory.budget) return;
-
-            const monthlyBudget = targetCategory.budget;
-
-            // 過濾同分類、同月份且非自身（編輯時）的交易
-            const currentSpent = transactions
-                .filter(t => t.categoryId === categoryId && 
-                             t.id !== newTransaction.id &&
-                             t.date.getMonth() === txMonth && 
-                             t.date.getFullYear() === txYear) 
-                .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-            
-            const totalSpentAfterTx = currentSpent + newAmount;
-            const ratio = totalSpentAfterTx / monthlyBudget;
-
-            let alertLevel = null;
-            let alertMessage = '';
-            let alertIcon = 'bell-ring';
-            let alertColor = 'red-500';
-
-            if (ratio >= 1.0) {
-                alertLevel = '超出預算';
-                alertMessage = `您在【${targetCategory.name}】的支出總額已達 NT$ ${totalSpentAfterTx.toLocaleString()}，已經超出了您的每月預算 NT$ ${monthlyBudget.toLocaleString()}！請注意！`;
-                alertIcon = 'wallet-x';
-                alertColor = 'red-600';
-            } else if (ratio >= 0.9) {
-                alertLevel = '90% 警示';
-                alertMessage = `您在【${targetCategory.name}】的支出已達到預算的 90% (NT$ ${totalSpentAfterTx.toLocaleString()})！即將超出預算。`;
-                alertIcon = 'alert-triangle';
-                alertColor = 'orange-500';
-            } else if (ratio >= 0.7) {
-                alertLevel = '70% 警示';
-                alertMessage = `您在【${targetCategory.name}】的支出已達到預算的 70% (NT$ ${totalSpentAfterTx.toLocaleString()})。`;
-                alertIcon = 'bar-chart-3';
-                alertColor = 'yellow-500';
-            } else if (ratio >= 0.5) {
-                alertLevel = '50% 提醒';
-                alertMessage = `您在【${targetCategory.name}】的支出已達到預算的 50% (NT$ ${totalSpentAfterTx.toLocaleString()})。`;
-                alertIcon = 'bar-chart-2';
-                alertColor = 'blue-500';
-            }
-
-            if (alertLevel) {
-                document.getElementById('alert-title').textContent = `${alertLevel} - ${targetCategory.name}`;
-                document.getElementById('alert-message').textContent = alertMessage;
-                const iconElement = document.getElementById('alert-icon');
-                iconElement.setAttribute('data-lucide', alertIcon);
-                // 移除所有顏色類別，確保只添加新的
-                iconElement.className = iconElement.className.split(' ').filter(c => !c.startsWith('text-')).join(' ');
-                iconElement.classList.add(`text-${alertColor}`);
-                budgetAlertModal.classList.remove('hidden');
-                lucide.createIcons();
-            }
-        }
-
-        // --- 13. 提交交易 (新增/編輯) (修正驗證邏輯，使用新的 amountInput) ---
-        transactionForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            if (!db || !currentUserId) {
-                showMessage("請先登入。", true);
-                return;
-            }
-
-            const id = transactionIdInput.value;
-            const description = descriptionInput.value.trim(); // 備註現在可以是空字串
-            const amount = parseFloat(amountInput.value); // 使用新的 amountInput
-            const categoryId = categorySelect.value;
-            const paymentMethodId = paymentMethodSelect.value;
-            const dateString = transactionDateInput.value;
-            
-            // 修正驗證：不再檢查 description，但金額必須大於 0
-            if (!dateString || isNaN(amount) || amount <= 0 || !categoryId || !paymentMethodId) {
-                showMessage("請輸入有效的日期、大於零的金額，並選擇分類與支付工具。", true);
-                return;
-            }
-            
-            // 將日期字串轉換為 Date 物件，並轉換為 Firestore Timestamp
-            const transactionDate = new Date(dateString);
-            const firestoreTimestamp = Timestamp.fromDate(transactionDate);
-
-            // 支出一律儲存為負值
-            const expenseAmount = -amount;
-
-            const newTransactionData = {
-                id: id, 
-                description: description,
-                amount: expenseAmount,
-                categoryId: categoryId,
-                paymentMethodId: paymentMethodId,
-                date: firestoreTimestamp, // 使用日期選擇器輸入的值
-            };
-
-            // 執行預算檢查 (在儲存前)
-            checkBudgetAlert({...newTransactionData, amount: amount, date: transactionDate}); // 傳遞正值金額和Date物件給檢查函式
-
-            try {
-                if (id) {
-                    // 編輯現有紀錄
-                    const docRef = doc(db, getCollectionPath('expenses', currentUserId), id);
-                    await updateDoc(docRef, {
-                        description: description,
-                        amount: expenseAmount,
-                        categoryId: categoryId,
-                        paymentMethodId: paymentMethodId,
-                        date: firestoreTimestamp,
-                    });
-                    showMessage("交易紀錄更新成功！");
-                } else {
-                    // 新增紀錄
-                    await addDoc(collection(db, getCollectionPath('expenses', currentUserId)), {
-                        description: description,
-                        amount: expenseAmount,
-                        categoryId: categoryId,
-                        paymentMethodId: paymentMethodId,
-                        date: firestoreTimestamp, // 使用日期選擇器輸入的值
-                    });
-                    showMessage("交易記錄新增成功！");
-                }
-
-                // 重設表單
-                resetForm();
-
-            } catch (e) {
-                console.error("提交交易記錄錯誤:", e);
-                showMessage("提交記錄失敗，請檢查連線。", true);
-            }
-        });
-
-        // --- 14. 渲染交易列表 (略... 保持不變) ---
-        function renderTransactions(transactionsList) {
-            listElement.innerHTML = '';
-            if (transactionsList.length === 0) {
-                listElement.innerHTML = `<p class="text-center text-gray-500 p-4 border border-dashed rounded-lg">本月尚無交易記錄。</p>`;
-                return;
-            }
-            
-            transactionsList.forEach(transaction => {
-                const category = categories.find(c => c.id === transaction.categoryId) || { name: '未知分類', color: 'gray-500' };
-                // 支出是負值，取絕對值顯示
-                const absoluteAmount = Math.abs(transaction.amount);
-                const formattedAmount = absoluteAmount.toFixed(2).toLocaleString('en-US');
-
-                const item = document.createElement('div');
-                // 移除紅色邊框，改用中性色/主色
-                item.className = 'flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border-l-4 border-emerald-500';
-                
-                // 顯示日期：YYYY/MM/DD
-                const formattedDate = formatDateToYYYYMMDD(transaction.date);
-
-                // 調整顯示順序: 日期 / 分類 / 金額 / 備註
-                item.innerHTML = `
-                    <div class="flex items-center min-w-0 flex-1 space-x-3">
-                        <div class="min-w-0 flex-1 transaction-grid">
-                            <div class="tx-date text-sm">${formattedDate}</div>
-                            <div class="tx-amount whitespace-nowrap">
-                                - NT$ ${formattedAmount}
-                            </div>
-                            <div class="tx-category text-${category.color || 'gray-500'} truncate">${category.name}</div>
-                            <div class="tx-description text-gray-700 truncate">${transaction.description || '無備註'}</div>
-                        </div>
-                    </div>
-                    <div class="flex flex-col items-end ml-4 flex-shrink-0 space-y-1">
-                        <div class="flex space-x-2">
-                             <button data-id="${transaction.id}" class="edit-btn p-1 text-blue-400 hover:text-blue-600 transition duration-150 rounded-full hover:bg-blue-50">
-                                <i data-lucide="pencil" class="w-4 h-4"></i>
-                            </button>
-                            <button data-id="${transaction.id}" class="delete-btn p-1 text-gray-400 hover:text-red-600 transition duration-150 rounded-full hover:bg-red-50">
-                                <i data-lucide="x" class="w-4 h-4"></i>
-                            </button>
-                        </div>
-                        <span class="text-xs text-gray-400">${paymentMethods.find(p => p.id === transaction.paymentMethodId)?.name || '未知支付'}</span>
-                    </div>
-                `;
-                listElement.appendChild(item);
-            });
-
-            lucide.createIcons();
-
-            // 刪除按鈕事件
-            document.querySelectorAll('.delete-btn').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    const id = e.currentTarget.getAttribute('data-id');
-                    if (id && currentUserId) deleteTransaction(id);
-                });
-            });
-            
-            // 編輯按鈕事件
-            document.querySelectorAll('.edit-btn').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    const id = e.currentTarget.getAttribute('data-id');
-                    if (id) startEditTransaction(id);
-                });
-            });
-        }
-        
-        // --- 15. 刪除交易 (略... 保持不變) ---
-        async function deleteTransaction(id) {
-            try {
-                const docRef = doc(db, getCollectionPath('expenses', currentUserId), id);
-                await deleteDoc(docRef);
-                showMessage("交易已刪除。");
-            } catch (e) {
-                console.error("刪除交易記錄錯誤:", e);
-                showMessage("刪除記錄失敗。", true);
-            }
-        }
-        
-        // --- 16. 開始編輯交易 (使用 amountInput) ---
-        function startEditTransaction(id) {
-            const transaction = transactions.find(t => t.id === id);
-            if (!transaction) return;
-
-            // 填充表單
-            transactionIdInput.value = transaction.id;
-            
-            // 設定日期欄位
-            transactionDateInput.value = formatDateToYYYYMMDD(transaction.date); 
-            
-            descriptionInput.value = transaction.description || ''; // 備註可為空
-            const amount = Math.abs(transaction.amount); 
-            amountInput.value = amount.toFixed(2); // 使用新的 amountInput
-            categorySelect.value = transaction.categoryId;
-            paymentMethodSelect.value = transaction.paymentMethodId;
-
-            // 更新按鈕和標題
-            formTitle.textContent = '編輯支出紀錄';
-            submitBtn.textContent = '更新紀錄';
-        }
-
-        // --- 17. 重設表單 (使用 amountInput) ---
-        function resetForm() {
-            transactionForm.reset();
-            transactionIdInput.value = '';
-            amountInput.value = '0'; // 使用新的 amountInput
-            transactionDateInput.value = formatDateToYYYYMMDD(new Date()); // 重設日期為今天
-            formTitle.textContent = '新增支出紀錄';
-            submitBtn.textContent = '儲存紀錄';
-        }
-
-        // --- 18. 計算機功能 (Calculator Logic) (略... 保持不變) ---
-        function evaluateExpression(expression) {
-            try {
-                // eslint-disable-next-line no-eval
-                let sanitized = expression.replace(/×/g, '*').replace(/÷/g, '/');
-                return parseFloat(eval(sanitized).toFixed(2));
-            } catch (e) {
-                return NaN;
-            }
-        }
-
-        function updateCalculator(key) {
-            if (key === 'clear') {
-                calculatorExpression = '';
-                displayValue = '0';
-                calcHistory.textContent = '';
-            } else if (key === 'backspace') {
-                calculatorExpression = calculatorExpression.slice(0, -1);
-                if (calculatorExpression === '') {
-                    displayValue = '0';
-                } else {
-                    const parts = calculatorExpression.split(/[\+\-\*\/÷]/);
-                    // 確保 displayValue 顯示當前輸入的數字，而不是整個表達式
-                    displayValue = parts[parts.length - 1] || '0';
-                }
-            } else if (key === '=') {
-                const result = evaluateExpression(calculatorExpression);
-                if (!isNaN(result)) {
-                    calcHistory.textContent = `${calculatorExpression} =`;
-                    calculatorExpression = result.toString();
-                    displayValue = calculatorExpression;
-                } else {
-                    calcHistory.textContent = '錯誤';
-                    displayValue = '錯誤';
-                    calculatorExpression = '';
-                }
-            } else if (['+', '-', '*', '/', '×', '÷'].includes(key)) {
-                const lastChar = calculatorExpression.slice(-1);
-                // 避免連續操作符，或替換操作符
-                if (['+', '-', '*', '/', '×', '÷'].includes(lastChar) && key !== lastChar) {
-                    calculatorExpression = calculatorExpression.slice(0, -1) + key;
-                } else if (!['+', '-', '*', '/', '×', '÷'].includes(lastChar) && calculatorExpression !== '') {
-                    // 在添加操作符前先計算結果
-                    const result = evaluateExpression(calculatorExpression);
-                    if (!isNaN(result)) {
-                        calculatorExpression = result.toString() + key;
-                    } else {
-                        // 如果當前表達式無效，則不添加操作符
-                        return;
-                    }
-                } else if (calculatorExpression === '' && key === '-') {
-                    // 允許負號開頭
-                     calculatorExpression = '-';
-                } else {
-                    return;
-                }
-                displayValue = key;
-            } else if (key === '.') {
-                const parts = calculatorExpression.split(/[\+\-\*\/÷]/);
-                const currentNumber = parts[parts.length - 1] || '0';
-                if (!currentNumber.includes('.')) {
-                    calculatorExpression += key;
-                    displayValue += key;
-                }
-            } else {
-                // 數字輸入
-                 if (displayValue === '0' || ['+', '-', '*', '/', '×', '÷'].includes(displayValue)) {
-                    // 如果顯示的是 0 或操作符，則覆蓋
-                    displayValue = key;
-                    // 檢查是否是 0 後第一個數字，如果是，則替換表達式中的 0
-                    if (calculatorExpression.length > 0 && calculatorExpression.slice(-1) === '0' && 
-                        (calculatorExpression.length === 1 || ['+', '-', '*', '/', '×', '÷'].includes(calculatorExpression.slice(-2,-1)))) {
-                            calculatorExpression = calculatorExpression.slice(0, -1) + key;
-                        } else if (['+', '-', '*', '/', '×', '÷'].includes(calculatorExpression.slice(-1))) {
-                            calculatorExpression += key;
-                        } else {
-                            calculatorExpression = key;
-                        }
-                 } else {
-                    displayValue += key;
-                    calculatorExpression += key;
-                }
-            }
-
-            calcDisplay.textContent = displayValue;
-            calcHistory.textContent = calculatorExpression;
-            if (calcHistory.textContent.length > 25) {
-                 calcHistory.textContent = '... ' + calcHistory.textContent.slice(-25);
-            }
-        }
-
-        // --- 19. 設定頁面功能 (Categories/Payments Management) (新增編輯功能) ---
-
-        // 獨立函式：更新設定項目
-        async function updateConfigItem(id, type, newData) {
-            if (!currentUserId || !db) return;
-            const collectionName = type === 'category' ? 'categories' : 'paymentMethods';
-            const docRef = doc(db, getCollectionPath(collectionName, currentUserId), id);
-            try {
-                await updateDoc(docRef, newData);
-                showMessage(`${collectionName === 'categories' ? '分類' : '支付工具'} 已更新！`);
-            } catch (error) {
-                console.error("更新設定項目錯誤:", error);
-                showMessage("更新失敗。", true);
-            }
-        }
-
-        // 渲染設定列表 (加入編輯功能)
-        function renderSettingsLists() {
-            // 1. Categories List Rendering
-            categoriesList.innerHTML = '';
-            categories.forEach(cat => {
-                const item = document.createElement('div');
-                item.className = 'flex flex-col sm:flex-row sm:items-center justify-between bg-gray-50 p-3 rounded-lg border space-y-2 sm:space-y-0';
-                
-                item.innerHTML = `
-                    <div class="flex items-center space-x-3 flex-1 min-w-0">
-                        <span class="w-3 h-3 rounded-full bg-${cat.color || 'gray-500'} flex-shrink-0"></span>
-                        <!-- 可編輯的分類名稱 -->
-                        <input type="text" value="${cat.name}" data-id="${cat.id}" data-field="name" data-type="category"
-                            class="edit-config-input font-medium text-gray-800 bg-transparent border-b border-transparent focus:border-emerald-500 outline-none w-full sm:w-auto px-1" style="min-width: 80px;">
-                        <span class="text-sm text-gray-500 flex-shrink-0">預算: NT$</span>
-                        <!-- 可編輯的分類預算 -->
-                        <input type="number" value="${cat.budget || 0}" data-id="${cat.id}" data-field="budget" data-type="category" min="0"
-                            class="edit-config-input text-sm text-gray-800 bg-transparent border-b border-transparent focus:border-emerald-500 outline-none w-20 text-right px-1">
-                    </div>
-                    <div class="flex justify-end sm:justify-start flex-shrink-0">
-                        <button data-id="${cat.id}" data-type="category" class="delete-config-btn p-1 text-gray-400 hover:text-red-600 transition duration-150 rounded-full hover:bg-red-50">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
-                    </div>
-                `;
-                categoriesList.appendChild(item);
-            });
-
-            // 2. Payment Methods List Rendering
-            paymentsList.innerHTML = '';
-            paymentMethods.forEach(pm => {
-                const item = document.createElement('div');
-                item.className = 'flex items-center justify-between bg-gray-50 p-3 rounded-lg border';
-                item.innerHTML = `
-                    <!-- 可編輯的支付工具名稱 -->
-                    <input type="text" value="${pm.name}" data-id="${pm.id}" data-field="name" data-type="paymentMethod"
-                        class="edit-config-input font-medium text-gray-800 bg-transparent border-b border-transparent focus:border-emerald-500 outline-none flex-1 min-w-0 px-1">
-                    <button data-id="${pm.id}" data-type="paymentMethod" class="delete-config-btn p-1 text-gray-400 hover:text-red-600 transition duration-150 rounded-full hover:bg-red-50">
-                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                    </button>
-                `;
-                paymentsList.appendChild(item);
-            });
-            lucide.createIcons();
-            
-            // 綁定刪除事件
-            document.querySelectorAll('.delete-config-btn').forEach(btn => {
-                btn.addEventListener('click', deleteConfigItem);
-            });
-
-            // 綁定編輯事件 (使用 blur/keypress 儲存)
-            document.querySelectorAll('.edit-config-input').forEach(input => {
-                let originalValue = input.value;
-                
-                input.addEventListener('focus', () => {
-                    originalValue = input.value;
-                });
-
-                // Save on focus out (blur)
-                input.addEventListener('blur', async () => {
-                    const id = input.getAttribute('data-id');
-                    const type = input.getAttribute('data-type');
-                    const field = input.getAttribute('data-field');
-                    let newValue = input.value.trim();
-
-                    if (field === 'budget') {
-                        // 處理預算為數字
-                        newValue = parseInt(newValue) || 0;
-                        if (newValue < 0) newValue = 0;
-                        input.value = newValue; // 更新顯示為清潔過的值
-                    }
-
-                    if (newValue.toString() !== originalValue.toString()) {
-                        // 驗證名稱不能為空
-                        if (newValue.toString().length === 0 && field === 'name') {
-                             showMessage("名稱不能為空。", true);
-                             input.value = originalValue; // 復原原值
-                             return;
-                        }
-                        
-                        const updateData = {};
-                        updateData[field] = newValue;
-                        await updateConfigItem(id, type, updateData);
-                    }
-                });
-
-                // Save on Enter key press
-                input.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        input.blur(); // 觸發 blur 事件來儲存
-                    }
-                });
-            });
-        }
-        
-        async function deleteConfigItem(e) {
-            if (!currentUserId || !db) return;
-            const id = e.currentTarget.getAttribute('data-id');
-            const type = e.currentTarget.getAttribute('data-type');
-            
-            if (!id || !type) return;
-
-            try {
-                const collectionName = type === 'category' ? 'categories' : 'paymentMethods';
-                const docRef = doc(db, getCollectionPath(collectionName, currentUserId), id);
-                await deleteDoc(docRef);
-                showMessage(`${collectionName === 'categories' ? '分類' : '支付工具'} 已刪除。`);
-            } catch (error) {
-                console.error("刪除設定項目錯誤:", error);
-                showMessage("刪除失敗。", true);
-            }
-        }
-
-        // 提交新增分類 (略... 保持不變)
-        categoryForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (!currentUserId || !db) return;
-
-            const name = catNameInput.value.trim();
-            const budget = parseInt(catBudgetInput.value) || 0;
-
-            if (name && budget >= 0) {
-                const randomColor = colorOptions[Math.floor(Math.random() * colorOptions.length)];
-                try {
-                    await addDoc(collection(db, getCollectionPath('categories', currentUserId)), {
-                        name: name,
-                        budget: budget,
-                        color: randomColor
-                    });
-                    showMessage(`分類【${name}】已新增！`);
-                    categoryForm.reset();
-                } catch (error) {
-                    showMessage("新增分類失敗。", true);
-                }
-            } else {
-                showMessage("請輸入有效的名稱和預算。", true);
-            }
-        });
-
-        // 提交新增支付工具 (略... 保持不變)
-        paymentForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            if (!currentUserId || !db) return;
-
-            const name = pmNameInput.value.trim();
-
-            if (name) {
-                try {
-                    await addDoc(collection(db, getCollectionPath('paymentMethods', currentUserId)), {
-                        name: name
-                    });
-                    showMessage(`支付工具【${name}】已新增！`);
-                    paymentForm.reset();
-                } catch (error) {
-                    showMessage("新增支付工具失敗。", true);
-                }
-            } else {
-                showMessage("請輸入有效的名稱。", true);
-            }
-        });
-
-
-        // --- 20. 事件監聽器：總結 ---
-        
-        // Auth events (略... 保持不變)
-        document.getElementById('login-btn').addEventListener('click', () => handleAuth(false));
-        document.getElementById('signup-btn').addEventListener('click', () => handleAuth(true));
-        document.getElementById('signout-btn').addEventListener('click', async () => {
-            try {
-                await signOut(auth);
-                showMessage("您已成功登出。");
-            } catch (e) {
-                console.error("登出錯誤:", e);
-                showMessage("登出失敗。", true);
-            }
-        });
-        
-        // Calculator events
-        openCalculatorBtn.addEventListener('click', () => {
-            calculatorModal.classList.remove('hidden');
-            // 初始化計算機顯示為當前金額輸入框的值
-            calculatorExpression = amountInput.value === '0' ? '' : amountInput.value;
-            displayValue = amountInput.value === '0' ? '0' : amountInput.value;
-            calcDisplay.textContent = displayValue;
-            calcHistory.textContent = calculatorExpression;
-        });
-
-        calculatorModal.addEventListener('click', (e) => {
-            if (e.target.id === 'calculator-modal') {
-                calculatorModal.classList.add('hidden');
-            }
-        });
-
-        document.querySelectorAll('.calc-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const key = e.currentTarget.getAttribute('data-key');
-                if (key !== 'ok') {
-                    updateCalculator(key);
-                }
-            });
-        });
-
-        document.getElementById('calc-ok-btn').addEventListener('click', () => {
-            const result = evaluateExpression(calculatorExpression);
-            if (!isNaN(result) && result >= 0) {
-                amountInput.value = result.toFixed(2); // 將結果設置回可編輯的金額輸入框
-                calculatorModal.classList.add('hidden');
-            } else {
-                showMessage('無效或負數的金額。請重新輸入。', true);
-            }
-        });
-        
-        // Budget Alert close button (略... 保持不變)
-        closeAlertBtn.addEventListener('click', () => {
-            budgetAlertModal.classList.add('hidden');
-        });
-        
-        // Settings Modal events (略... 保持不變)
-        settingsBtn.addEventListener('click', () => {
-            settingsModal.classList.remove('hidden');
-            document.querySelector('.tab-btn[data-tab="categories"]').click(); // 預設開啟分類
-            lucide.createIcons();
-        });
-        closeSettingsBtn.addEventListener('click', () => {
-            settingsModal.classList.add('hidden');
-        });
-        settingsModal.addEventListener('click', (e) => {
-             if (e.target.id === 'settings-modal') {
-                settingsModal.classList.add('hidden');
-            }
-        });
-        
-        // Tab switching logic (略... 保持不變)
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.tab-btn').forEach(b => {
-                    b.classList.remove('border-blue-500', 'text-blue-500');
-                    b.classList.add('border-transparent', 'text-gray-500');
-                });
-                e.currentTarget.classList.add('border-blue-500', 'text-blue-500');
-                e.currentTarget.classList.remove('border-transparent', 'text-gray-500');
-
-                categoriesTab.classList.add('hidden');
-                paymentsTab.classList.add('hidden');
-
-                if (e.currentTarget.getAttribute('data-tab') === 'categories') {
-                    categoriesTab.classList.remove('hidden');
-                } else {
-                    paymentsTab.classList.remove('hidden');
-                }
-            });
-        });
-
-
-        // 啟動應用程式
-        initializeServices();
+        // 應用程式啟動
+        document.addEventListener('DOMContentLoaded', initializeFirebase);
     </script>
 </body>
 </html>
