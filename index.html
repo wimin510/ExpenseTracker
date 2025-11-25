@@ -117,14 +117,14 @@
                 <!-- Hidden field for editing -->
                 <input type="hidden" id="transaction-id" value=""> 
 
-                <!-- 1. 交易日期 (新增) -->
+                <!-- 1. 交易日期 (修正順序) -->
                 <div class="mb-4">
                     <label for="transaction-date" class="block text-sm font-medium text-gray-700 mb-1">日期</label>
                     <input type="date" id="transaction-date" required
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150 bg-white">
                 </div>
 
-                <!-- 2. 支出分類 -->
+                <!-- 2. 支出分類 (修正順序) -->
                 <div class="mb-4">
                     <label for="category" class="block text-sm font-medium text-gray-700 mb-1">分類</label>
                     <select id="category" required 
@@ -133,7 +133,7 @@
                     </select>
                 </div>
                 
-                <!-- 3. 支付工具 -->
+                <!-- 3. 支付工具 (修正順序) -->
                 <div class="mb-4">
                     <label for="payment-method" class="block text-sm font-medium text-gray-700 mb-1">支付工具</label>
                     <select id="payment-method" required 
@@ -142,23 +142,25 @@
                     </select>
                 </div>
 
-                <!-- 4. 金額 -->
+                <!-- 4. 金額 (修正順序 & 允許直接輸入) -->
                 <div class="mb-4">
-                    <label for="amount-display" class="block text-sm font-medium text-gray-700 mb-1">金額 (請按此輸入)</label>
+                    <label for="amount-input" class="block text-sm font-medium text-gray-700 mb-1">金額 (可直接輸入或使用計算機)</label>
                     <div id="amount-input-group" class="relative">
-                        <input type="text" id="amount-display" value="0" readonly required
-                               class="w-full px-4 py-2 pr-12 text-2xl font-bold text-gray-800 border border-gray-300 rounded-lg bg-white cursor-pointer focus:ring-emerald-500 focus:border-emerald-500 transition duration-150">
+                        <!-- 移除 readonly, 改為 type="number", 這是新的金額輸入框 -->
+                        <input type="number" id="amount-input" value="0" required step="0.01" min="0"
+                               class="w-full px-4 py-2 pr-12 text-2xl font-bold text-gray-800 border border-gray-300 rounded-lg bg-white focus:ring-emerald-500 focus:border-emerald-500 transition duration-150">
                         <button type="button" id="open-calculator-btn" class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-gray-700">
                             <i data-lucide="calculator" class="w-6 h-6"></i>
                         </button>
                     </div>
-                    <input type="hidden" id="amount-value" value="0">
+                    <!-- 移除 amount-value hidden input，直接使用 amount-input 作為唯一金額來源 -->
                 </div>
                 
-                <!-- 5. 描述/備註 -->
+                <!-- 5. 描述/備註 (修正順序 & 非必填) -->
                 <div class="mb-6">
-                    <label for="description" class="block text-sm font-medium text-gray-700 mb-1">備註</label>
-                    <input type="text" id="description" placeholder="例如：星巴克咖啡、週末購物" required
+                    <label for="description" class="block text-sm font-medium text-gray-700 mb-1">備註 (非必填)</label>
+                    <!-- 移除 required 屬性 -->
+                    <input type="text" id="description" placeholder="例如：星巴克咖啡、週末購物"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150">
                 </div>
 
@@ -338,14 +340,18 @@
         const formTitle = document.getElementById('form-title');
         const submitBtn = document.getElementById('submit-btn');
         
-        // 新增：日期輸入欄位
+        // 日期輸入欄位
         const transactionDateInput = document.getElementById('transaction-date');
         
+        // 備註欄位 (現在非必填)
         const descriptionInput = document.getElementById('description');
+        
         const categorySelect = document.getElementById('category');
         const paymentMethodSelect = document.getElementById('payment-method');
-        const amountDisplay = document.getElementById('amount-display');
-        const amountValueInput = document.getElementById('amount-value');
+        
+        // 金額輸入欄位 (可直接輸入)
+        const amountInput = document.getElementById('amount-input');
+        
         const userEmailDisplay = document.getElementById('user-email-display');
         const messageBox = document.getElementById('message-box');
         const budgetAlertModal = document.getElementById('budget-alert-modal');
@@ -373,7 +379,7 @@
         let calculatorExpression = '';
         let displayValue = '0';
         
-        // 預設資料 (若使用者沒有設定，則自動新增這些)
+        // 預設資料
         const defaultPaymentMethods = [
             { name: '現金 (Cash)', color: 'gray-500' },
             { name: '信用卡 (Credit Card)', color: 'blue-500' },
@@ -421,7 +427,7 @@
             }, 3000);
         }
 
-        // --- 5. Firebase 服務與路徑設定 (略... 保持不變) ---
+        // --- 5. Firebase 服務與路徑設定 ---
         function initializeServices() {
             try {
                 const app = initializeApp(firebaseConfig);
@@ -508,7 +514,7 @@
             }
         }
         
-        // --- 8. 整合資料監聽器 (主要調整：過濾邏輯改用 date 欄位) ---
+        // --- 8. 整合資料監聽器 (略... 保持不變) ---
         function startDataListeners(uid) {
             // 監聽交易紀錄 (expenses)
             const expenseColRef = collection(db, getCollectionPath('expenses', uid));
@@ -624,7 +630,7 @@
             totalExpenseElement.textContent = `NT$ ${formattedTotal}`;
         }
         
-        // --- 12. 預算提醒檢查 (調整：使用 transaction.date 進行月份檢查) ---
+        // --- 12. 預算提醒檢查 (略... 保持不變) ---
         function checkBudgetAlert(newTransaction) {
             const categoryId = newTransaction.categoryId;
             const newAmount = Math.abs(newTransaction.amount);
@@ -690,7 +696,7 @@
             }
         }
 
-        // --- 13. 提交交易 (新增/編輯) (主要調整：使用 Date Input) ---
+        // --- 13. 提交交易 (新增/編輯) (修正驗證邏輯，使用新的 amountInput) ---
         transactionForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -700,14 +706,15 @@
             }
 
             const id = transactionIdInput.value;
-            const description = descriptionInput.value.trim();
-            const amount = parseFloat(amountValueInput.value); // amount 是正值
+            const description = descriptionInput.value.trim(); // 備註現在可以是空字串
+            const amount = parseFloat(amountInput.value); // 使用新的 amountInput
             const categoryId = categorySelect.value;
             const paymentMethodId = paymentMethodSelect.value;
-            const dateString = transactionDateInput.value; // YYYY-MM-DD
+            const dateString = transactionDateInput.value;
             
-            if (!dateString || !description || isNaN(amount) || amount <= 0 || !categoryId || !paymentMethodId) {
-                showMessage("請輸入有效的日期、備註、大於零的金額，並選擇分類與支付工具。", true);
+            // 修正驗證：不再檢查 description，但金額必須大於 0
+            if (!dateString || isNaN(amount) || amount <= 0 || !categoryId || !paymentMethodId) {
+                showMessage("請輸入有效的日期、大於零的金額，並選擇分類與支付工具。", true);
                 return;
             }
             
@@ -793,7 +800,7 @@
                                 - NT$ ${formattedAmount}
                             </div>
                             <div class="tx-category text-${category.color || 'gray-500'} truncate">${category.name}</div>
-                            <div class="tx-description text-gray-700 truncate">${transaction.description}</div>
+                            <div class="tx-description text-gray-700 truncate">${transaction.description || '無備註'}</div>
                         </div>
                     </div>
                     <div class="flex flex-col items-end ml-4 flex-shrink-0 space-y-1">
@@ -842,7 +849,7 @@
             }
         }
         
-        // --- 16. 開始編輯交易 (調整：讀取並設定日期) ---
+        // --- 16. 開始編輯交易 (使用 amountInput) ---
         function startEditTransaction(id) {
             const transaction = transactions.find(t => t.id === id);
             if (!transaction) return;
@@ -853,10 +860,9 @@
             // 設定日期欄位
             transactionDateInput.value = formatDateToYYYYMMDD(transaction.date); 
             
-            descriptionInput.value = transaction.description;
+            descriptionInput.value = transaction.description || ''; // 備註可為空
             const amount = Math.abs(transaction.amount); 
-            amountDisplay.value = amount.toFixed(2);
-            amountValueInput.value = amount.toFixed(2);
+            amountInput.value = amount.toFixed(2); // 使用新的 amountInput
             categorySelect.value = transaction.categoryId;
             paymentMethodSelect.value = transaction.paymentMethodId;
 
@@ -865,12 +871,11 @@
             submitBtn.textContent = '更新紀錄';
         }
 
-        // --- 17. 重設表單 (調整：重設日期為今天) ---
+        // --- 17. 重設表單 (使用 amountInput) ---
         function resetForm() {
             transactionForm.reset();
             transactionIdInput.value = '';
-            amountDisplay.value = '0';
-            amountValueInput.value = '0';
+            amountInput.value = '0'; // 使用新的 amountInput
             transactionDateInput.value = formatDateToYYYYMMDD(new Date()); // 重設日期為今天
             formTitle.textContent = '新增支出紀錄';
             submitBtn.textContent = '儲存紀錄';
@@ -879,6 +884,7 @@
         // --- 18. 計算機功能 (Calculator Logic) (略... 保持不變) ---
         function evaluateExpression(expression) {
             try {
+                // eslint-disable-next-line no-eval
                 let sanitized = expression.replace(/×/g, '*').replace(/÷/g, '/');
                 return parseFloat(eval(sanitized).toFixed(2));
             } catch (e) {
@@ -897,7 +903,8 @@
                     displayValue = '0';
                 } else {
                     const parts = calculatorExpression.split(/[\+\-\*\/÷]/);
-                    displayValue = parts[parts.length - 1] || calculatorExpression;
+                    // 確保 displayValue 顯示當前輸入的數字，而不是整個表達式
+                    displayValue = parts[parts.length - 1] || '0';
                 }
             } else if (key === '=') {
                 const result = evaluateExpression(calculatorExpression);
@@ -912,15 +919,23 @@
                 }
             } else if (['+', '-', '*', '/', '×', '÷'].includes(key)) {
                 const lastChar = calculatorExpression.slice(-1);
+                // 避免連續操作符，或替換操作符
                 if (['+', '-', '*', '/', '×', '÷'].includes(lastChar) && key !== lastChar) {
                     calculatorExpression = calculatorExpression.slice(0, -1) + key;
-                } else if (!['+', '-', '*', '/', '×', '÷'].includes(lastChar)) {
+                } else if (!['+', '-', '*', '/', '×', '÷'].includes(lastChar) && calculatorExpression !== '') {
+                    // 在添加操作符前先計算結果
                     const result = evaluateExpression(calculatorExpression);
                     if (!isNaN(result)) {
                         calculatorExpression = result.toString() + key;
                     } else {
+                        // 如果當前表達式無效，則不添加操作符
                         return;
                     }
+                } else if (calculatorExpression === '' && key === '-') {
+                    // 允許負號開頭
+                     calculatorExpression = '-';
+                } else {
+                    return;
                 }
                 displayValue = key;
             } else if (key === '.') {
@@ -931,13 +946,23 @@
                     displayValue += key;
                 }
             } else {
-                if (displayValue === '0' && key !== '.') {
+                // 數字輸入
+                 if (displayValue === '0' || ['+', '-', '*', '/', '×', '÷'].includes(displayValue)) {
+                    // 如果顯示的是 0 或操作符，則覆蓋
                     displayValue = key;
-                    calculatorExpression = calculatorExpression.slice(0, -1) + key;
-                } else {
+                    // 檢查是否是 0 後第一個數字，如果是，則替換表達式中的 0
+                    if (calculatorExpression.length > 0 && calculatorExpression.slice(-1) === '0' && 
+                        (calculatorExpression.length === 1 || ['+', '-', '*', '/', '×', '÷'].includes(calculatorExpression.slice(-2,-1)))) {
+                            calculatorExpression = calculatorExpression.slice(0, -1) + key;
+                        } else if (['+', '-', '*', '/', '×', '÷'].includes(calculatorExpression.slice(-1))) {
+                            calculatorExpression += key;
+                        } else {
+                            calculatorExpression = key;
+                        }
+                 } else {
                     displayValue += key;
+                    calculatorExpression += key;
                 }
-                calculatorExpression += key;
             }
 
             calcDisplay.textContent = displayValue;
@@ -947,35 +972,59 @@
             }
         }
 
-        // --- 19. 設定頁面功能 (Categories/Payments Management) (略... 保持不變) ---
+        // --- 19. 設定頁面功能 (Categories/Payments Management) (新增編輯功能) ---
 
-        // 渲染設定列表
+        // 獨立函式：更新設定項目
+        async function updateConfigItem(id, type, newData) {
+            if (!currentUserId || !db) return;
+            const collectionName = type === 'category' ? 'categories' : 'paymentMethods';
+            const docRef = doc(db, getCollectionPath(collectionName, currentUserId), id);
+            try {
+                await updateDoc(docRef, newData);
+                showMessage(`${collectionName === 'categories' ? '分類' : '支付工具'} 已更新！`);
+            } catch (error) {
+                console.error("更新設定項目錯誤:", error);
+                showMessage("更新失敗。", true);
+            }
+        }
+
+        // 渲染設定列表 (加入編輯功能)
         function renderSettingsLists() {
-            // 渲染分類列表
+            // 1. Categories List Rendering
             categoriesList.innerHTML = '';
             categories.forEach(cat => {
                 const item = document.createElement('div');
-                item.className = 'flex items-center justify-between bg-gray-50 p-3 rounded-lg border';
+                item.className = 'flex flex-col sm:flex-row sm:items-center justify-between bg-gray-50 p-3 rounded-lg border space-y-2 sm:space-y-0';
+                
                 item.innerHTML = `
-                    <div class="flex items-center space-x-3">
-                        <span class="w-3 h-3 rounded-full bg-${cat.color || 'gray-500'}"></span>
-                        <p class="font-medium text-gray-800">${cat.name}</p>
-                        <span class="text-sm text-gray-500">(預算: NT$ ${cat.budget ? cat.budget.toLocaleString() : '無'})</span>
+                    <div class="flex items-center space-x-3 flex-1 min-w-0">
+                        <span class="w-3 h-3 rounded-full bg-${cat.color || 'gray-500'} flex-shrink-0"></span>
+                        <!-- 可編輯的分類名稱 -->
+                        <input type="text" value="${cat.name}" data-id="${cat.id}" data-field="name" data-type="category"
+                            class="edit-config-input font-medium text-gray-800 bg-transparent border-b border-transparent focus:border-emerald-500 outline-none w-full sm:w-auto px-1" style="min-width: 80px;">
+                        <span class="text-sm text-gray-500 flex-shrink-0">預算: NT$</span>
+                        <!-- 可編輯的分類預算 -->
+                        <input type="number" value="${cat.budget || 0}" data-id="${cat.id}" data-field="budget" data-type="category" min="0"
+                            class="edit-config-input text-sm text-gray-800 bg-transparent border-b border-transparent focus:border-emerald-500 outline-none w-20 text-right px-1">
                     </div>
-                    <button data-id="${cat.id}" data-type="category" class="delete-config-btn p-1 text-gray-400 hover:text-red-600 transition duration-150 rounded-full hover:bg-red-50">
-                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                    </button>
+                    <div class="flex justify-end sm:justify-start flex-shrink-0">
+                        <button data-id="${cat.id}" data-type="category" class="delete-config-btn p-1 text-gray-400 hover:text-red-600 transition duration-150 rounded-full hover:bg-red-50">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
                 `;
                 categoriesList.appendChild(item);
             });
 
-            // 渲染支付工具列表
+            // 2. Payment Methods List Rendering
             paymentsList.innerHTML = '';
             paymentMethods.forEach(pm => {
                 const item = document.createElement('div');
                 item.className = 'flex items-center justify-between bg-gray-50 p-3 rounded-lg border';
                 item.innerHTML = `
-                    <p class="font-medium text-gray-800">${pm.name}</p>
+                    <!-- 可編輯的支付工具名稱 -->
+                    <input type="text" value="${pm.name}" data-id="${pm.id}" data-field="name" data-type="paymentMethod"
+                        class="edit-config-input font-medium text-gray-800 bg-transparent border-b border-transparent focus:border-emerald-500 outline-none flex-1 min-w-0 px-1">
                     <button data-id="${pm.id}" data-type="paymentMethod" class="delete-config-btn p-1 text-gray-400 hover:text-red-600 transition duration-150 rounded-full hover:bg-red-50">
                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                     </button>
@@ -987,6 +1036,51 @@
             // 綁定刪除事件
             document.querySelectorAll('.delete-config-btn').forEach(btn => {
                 btn.addEventListener('click', deleteConfigItem);
+            });
+
+            // 綁定編輯事件 (使用 blur/keypress 儲存)
+            document.querySelectorAll('.edit-config-input').forEach(input => {
+                let originalValue = input.value;
+                
+                input.addEventListener('focus', () => {
+                    originalValue = input.value;
+                });
+
+                // Save on focus out (blur)
+                input.addEventListener('blur', async () => {
+                    const id = input.getAttribute('data-id');
+                    const type = input.getAttribute('data-type');
+                    const field = input.getAttribute('data-field');
+                    let newValue = input.value.trim();
+
+                    if (field === 'budget') {
+                        // 處理預算為數字
+                        newValue = parseInt(newValue) || 0;
+                        if (newValue < 0) newValue = 0;
+                        input.value = newValue; // 更新顯示為清潔過的值
+                    }
+
+                    if (newValue.toString() !== originalValue.toString()) {
+                        // 驗證名稱不能為空
+                        if (newValue.toString().length === 0 && field === 'name') {
+                             showMessage("名稱不能為空。", true);
+                             input.value = originalValue; // 復原原值
+                             return;
+                        }
+                        
+                        const updateData = {};
+                        updateData[field] = newValue;
+                        await updateConfigItem(id, type, updateData);
+                    }
+                });
+
+                // Save on Enter key press
+                input.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        input.blur(); // 觸發 blur 事件來儲存
+                    }
+                });
             });
         }
         
@@ -1008,7 +1102,7 @@
             }
         }
 
-        // 提交新增分類
+        // 提交新增分類 (略... 保持不變)
         categoryForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (!currentUserId || !db) return;
@@ -1034,7 +1128,7 @@
             }
         });
 
-        // 提交新增支付工具
+        // 提交新增支付工具 (略... 保持不變)
         paymentForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (!currentUserId || !db) return;
@@ -1072,11 +1166,12 @@
             }
         });
         
-        // Calculator events (略... 保持不變)
+        // Calculator events
         openCalculatorBtn.addEventListener('click', () => {
             calculatorModal.classList.remove('hidden');
-            calculatorExpression = amountValueInput.value === '0' ? '' : amountValueInput.value;
-            displayValue = amountValueInput.value === '0' ? '0' : amountValueInput.value;
+            // 初始化計算機顯示為當前金額輸入框的值
+            calculatorExpression = amountInput.value === '0' ? '' : amountInput.value;
+            displayValue = amountInput.value === '0' ? '0' : amountInput.value;
             calcDisplay.textContent = displayValue;
             calcHistory.textContent = calculatorExpression;
         });
@@ -1099,8 +1194,7 @@
         document.getElementById('calc-ok-btn').addEventListener('click', () => {
             const result = evaluateExpression(calculatorExpression);
             if (!isNaN(result) && result >= 0) {
-                amountDisplay.value = result.toFixed(2);
-                amountValueInput.value = result.toFixed(2);
+                amountInput.value = result.toFixed(2); // 將結果設置回可編輯的金額輸入框
                 calculatorModal.classList.add('hidden');
             } else {
                 showMessage('無效或負數的金額。請重新輸入。', true);
@@ -1112,7 +1206,7 @@
             budgetAlertModal.classList.add('hidden');
         });
         
-        // Settings Modal events
+        // Settings Modal events (略... 保持不變)
         settingsBtn.addEventListener('click', () => {
             settingsModal.classList.remove('hidden');
             document.querySelector('.tab-btn[data-tab="categories"]').click(); // 預設開啟分類
@@ -1127,7 +1221,7 @@
             }
         });
         
-        // Tab switching logic
+        // Tab switching logic (略... 保持不變)
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 document.querySelectorAll('.tab-btn').forEach(b => {
