@@ -1,224 +1,340 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Firebase Google 登入示範</title>
-    <!-- Tailwind CSS CDN for styling -->
+    <title>跨平台記帳程式</title>
+    <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Font: Inter -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- 引入 Lucide icons (用於圖示) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
+        /* 自定義 Tailwind 配置 */
         :root {
+            --color-primary: #10b981; /* Emerald 500 */
+            --color-danger: #ef4444; /* Red 500 */
+        }
+        .income { color: var(--color-primary); }
+        .expense { color: var(--color-danger); }
+        /* 使用 Inter 字體 */
+        body {
             font-family: 'Inter', sans-serif;
-        }
-        .main-bg {
             background-color: #f7f9fb;
-        }
-        /* 針對 Google 登入按鈕的特殊樣式 */
-        .google-btn {
-            background-color: #4285f4; /* Google Blue */
-            color: white;
-        }
-        .google-btn:hover {
-            background-color: #357ae8;
-        }
-        .google-icon {
-            margin-right: 0.75rem;
-            width: 1.5rem;
-            height: 1.5rem;
         }
     </style>
 </head>
-<body class="main-bg min-h-screen flex items-center justify-center p-4">
+<body class="min-h-screen p-4 sm:p-6 md:p-10">
 
-    <!-- Auth Card Container -->
-    <div class="bg-white rounded-xl shadow-2xl p-6 sm:p-10 w-full max-w-md text-center transform transition duration-500 hover:shadow-3xl hover:scale-[1.01]">
-        
-        <h1 class="text-3xl font-bold text-indigo-700 mb-6">帳號身份驗證中心</h1>
-        
-        <!-- Status Display Area -->
-        <div id="auth-status-card" class="mb-6 p-4 rounded-lg border-2 border-dashed border-gray-300 transition duration-300 min-h-[120px] flex flex-col justify-center">
-            <p id="status-message" class="text-lg font-semibold text-gray-600">正在檢查登入狀態...</p>
-            <p id="user-info" class="text-sm text-gray-500 mt-1 break-all"></p>
+    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50">
+        <div class="flex flex-col items-center">
+            <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-emerald-500"></div>
+            <p class="mt-4 text-lg text-gray-700">正在初始化 Firebase 與匿名登入...</p>
         </div>
-
-        <!-- Action Button Area -->
-        <div id="action-area">
-            <!-- Button will be dynamically rendered here -->
-            <button id="auth-button" class="w-full py-3 px-4 rounded-lg font-bold text-lg shadow-md transition duration-150 flex items-center justify-center">
-                載入中...
-            </button>
-        </div>
-        
-        <!-- Error/Alert Area -->
-        <div id="alert-area" class="mt-4 text-sm font-medium text-red-600 hidden p-2 bg-red-100 rounded-lg text-left whitespace-pre-wrap"></div>
-        
-        <!-- App ID for debugging purposes -->
-        <p id="app-id-display" class="mt-4 text-xs text-gray-400">App ID: loading...</p>
     </div>
 
-    <!-- Firebase & Application Logic -->
+    <div id="app-container" class="hidden max-w-lg mx-auto bg-white shadow-xl rounded-2xl p-6 sm:p-8">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 flex items-center">
+                <i data-lucide="wallet-2" class="w-8 h-8 text-emerald-500 mr-2"></i>
+                我的匿名記帳本
+            </h1>
+            <p id="user-id-display" class="text-sm text-gray-500 mt-1 break-all"></p>
+            <div class="mt-2 p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-lg text-sm">
+                您的資料已安全儲存在您的 Firebase 匿名帳戶中。
+            </div>
+        </header>
+
+        <!-- 總餘額區塊 -->
+        <div class="bg-emerald-100 p-6 rounded-xl mb-8 shadow-inner">
+            <h2 class="text-xl font-semibold text-gray-700 mb-2">總餘額</h2>
+            <p id="balance" class="text-4xl font-extrabold text-emerald-600">NT$ 0.00</p>
+        </div>
+
+        <!-- 新增交易表單 -->
+        <section class="mb-8 p-6 border border-gray-200 rounded-xl bg-gray-50">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">新增交易</h2>
+            <form id="transaction-form">
+                <div class="mb-4">
+                    <label for="description" class="block text-sm font-medium text-gray-700 mb-1">描述</label>
+                    <input type="text" id="description" placeholder="例如：晚餐、薪水" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150">
+                </div>
+                <div class="mb-4">
+                    <label for="amount" class="block text-sm font-medium text-gray-700 mb-1">金額 (收入為正，支出為負)</label>
+                    <input type="number" id="amount" placeholder="例如：-350 (支出) 或 50000 (收入)" required step="0.01"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 transition duration-150">
+                </div>
+                
+                <button type="submit"
+                        class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl shadow-md transition duration-300 ease-in-out transform hover:scale-[1.01]">
+                    記錄交易
+                </button>
+            </form>
+        </section>
+
+        <!-- 交易記錄列表 -->
+        <section>
+            <h2 class="text-xl font-bold text-gray-800 mb-4">交易記錄</h2>
+            <div id="transactions-list" class="space-y-3">
+                <!-- 交易項目將會在這裡動態插入 -->
+                <p id="empty-state" class="text-center text-gray-500 p-4 border border-dashed rounded-lg">尚無交易記錄。</p>
+            </div>
+        </section>
+        
+        <!-- 訊息彈窗 -->
+        <div id="message-box" class="fixed bottom-4 right-4 bg-red-600 text-white p-3 rounded-lg shadow-xl hidden transition-opacity duration-300"></div>
+
+    </div>
+
+    <!-- Firebase SDKs -->
     <script type="module">
-        // Import necessary Firebase functions
+        // --- 1. 引入 Firebase 模組 ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        
-        // --- Configuration (已更新為您的 Firebase 配置) ---
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-auth-app-id';
-        
-        // 使用者提供的 Firebase 配置
-        const userProvidedConfig = {
-            apiKey: "AIzaSyBJcP4HOoVFnbzLT-jdnrW1AtAWXVfjEaM",
-            authDomain: "my-expense-tracker-574dd.firebaseapp.com",
-            projectId: "my-expense-tracker-574dd",
-            storageBucket: "my-expense-tracker-574dd.firebasestorage.app",
-            messagingSenderId: "514938495732",
-            appId: "1:514938495732:web:bb3529eca4f2db547b74a1",
-            measurementId: "G-CDTCB6MFZ3"
-        };
-        
-        // 優先使用 Canvas 環境提供的配置 (如果有)，否則使用使用者提供的配置
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : userProvidedConfig;
-        
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, deleteDoc, onSnapshot, collection, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 設定 Firestore 紀錄等級 (Debug 用)
+        setLogLevel('Debug');
+
+        // --- 2. 存取環境提供的全域變數 ---
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // UI 元素
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const appContainer = document.getElementById('app-container');
+        const balanceElement = document.getElementById('balance');
+        const listElement = document.getElementById('transactions-list');
+        const form = document.getElementById('transaction-form');
+        const descriptionInput = document.getElementById('description');
+        const amountInput = document.getElementById('amount');
+        const emptyState = document.getElementById('empty-state');
+        const userIdDisplay = document.getElementById('user-id-display');
+        const messageBox = document.getElementById('message-box');
 
-        let app;
+        let db;
         let auth;
-        
-        const statusMessageEl = document.getElementById('status-message');
-        const userInfoEl = document.getElementById('user-info');
-        const authButton = document.getElementById('auth-button');
-        const alertArea = document.getElementById('alert-area');
-        const statusCard = document.getElementById('auth-status-card');
-        const appIdDisplay = document.getElementById('app-id-display');
+        let userId = 'unknown'; // 預設值
 
-        function updateUI(user) {
-            // 清除按鈕上的所有類別以便重新設定
-            authButton.className = 'w-full py-3 px-4 rounded-lg font-bold text-lg shadow-md transition duration-150 flex items-center justify-center';
+        // --- 3. 輔助函式：顯示訊息彈窗 (取代 alert) ---
+        function showMessage(message, isError = false) {
+            messageBox.textContent = message;
+            messageBox.className = `fixed bottom-4 right-4 p-3 rounded-xl shadow-2xl transition-all duration-500 transform ${isError ? 'bg-red-600' : 'bg-emerald-500'} ${isError ? 'scale-105' : 'scale-100'}`;
+            messageBox.style.display = 'block';
             
-            if (user) {
-                // 使用者已登入
-                const isGoogleUser = user.providerData.some(p => p.providerId === GoogleAuthProvider.PROVIDER_ID);
-                const userName = user.displayName || user.email || (user.isAnonymous ? "匿名使用者" : "已登入使用者");
-                
-                statusCard.classList.remove('border-gray-300', 'border-red-500');
-                statusCard.classList.add('border-green-500', 'bg-green-50');
-
-                statusMessageEl.textContent = isGoogleUser ? `嗨，${userName}！您已使用 Google 登入。` : `您目前是匿名使用者。`;
-                userInfoEl.textContent = `UID: ${user.uid}`;
-                userInfoEl.classList.remove('hidden');
-
-                authButton.textContent = '登出 (Sign Out)';
-                authButton.classList.add('bg-red-600', 'text-white', 'hover:bg-red-700');
-                authButton.onclick = handleSignOut;
-
-            } else {
-                // 使用者已登出
-                statusCard.classList.remove('border-green-500', 'bg-green-50', 'border-red-500');
-                statusCard.classList.add('border-gray-300');
-
-                statusMessageEl.textContent = '請點擊下方按鈕登入您的 Google 帳號。';
-                userInfoEl.textContent = '';
-                userInfoEl.classList.add('hidden');
-                
-                // 渲染 Google 登入按鈕及其圖示
-                authButton.innerHTML = `
-                    <svg class="google-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-                        <path fill="#FFC107" d="M43.61 20.083H42V20H24v8h11.341c-1.157 3.442-3.877 6.309-7.53 8.243l-.161.107L36 41l.211-.191c7.79-7.143 12.445-17.377 12.445-29.809 0-1.571-.144-3.102-.413-4.571z"/>
-                        <path fill="#FF3D00" d="M6.307 14.693l-.208.196c3.856-3.55 8.918-5.694 14.341-5.694 5.378 0 10.435 2.144 14.316 5.672L36 12.083C30.686 6.848 23.328 4 15.648 4 8.783 4 2.894 6.784 0 11.233l6.307 3.46z"/>
-                        <path fill="#4CAF50" d="M15.648 41c7.323 0 13.633-3.239 18.283-8.318l-7.234-5.291c-2.455 2.502-5.744 3.999-9.05 4.015h-.001C12.871 31.42 8.583 28.537 6.307 24.053L0 27.503c2.894 4.448 8.783 7.233 15.648 7.233z"/>
-                        <path fill="#1976D2" d="M47.587 20.083c-.27-1.469-.413-2.999-.413-4.571 0-1.472.143-2.903.413-4.371H24v8h23.587z"/>
-                    </svg>
-                    使用 Google 帳號登入
-                `;
-                authButton.classList.add('google-btn', 'hover:bg-blue-700');
-                authButton.onclick = handleGoogleSignIn;
-            }
-            alertArea.classList.add('hidden');
-        }
-        
-        function displayAlert(message) {
-            alertArea.textContent = message;
-            alertArea.classList.remove('hidden');
+            setTimeout(() => {
+                messageBox.style.opacity = '0';
+                setTimeout(() => {
+                    messageBox.style.display = 'none';
+                    messageBox.style.opacity = '1'; // Reset for next use
+                }, 500);
+            }, 3000);
         }
 
-        async function handleGoogleSignIn() {
-            displayAlert("正在嘗試 Google 登入...");
+        // --- 4. 初始化 Firebase 與匿名登入 ---
+        async function initializeAppAndAuth() {
             try {
-                const provider = new GoogleAuthProvider();
-                await signInWithPopup(auth, provider);
-                // onAuthStateChanged 會自動處理 UI 更新
-            } catch (error) {
-                console.error("Google Sign-in Error:", error);
-
-                let errorMessage = `登入失敗 (${error.code})`;
-                
-                // 根據常見的 Firebase 錯誤碼提供更具體的提示
-                if (error.code === 'auth/popup-closed-by-user') {
-                    errorMessage = '使用者關閉了登入視窗。請重試。';
-                } else if (error.code === 'auth/unauthorized-domain') {
-                    errorMessage = '網域未授權。請到 Firebase Console 的 Authentication > Sign-in method 頁面檢查 "Authorized domains" 是否包含當前網域。';
-                } else if (error.code === 'auth/cancelled-popup-request') {
-                    errorMessage = '登入視窗請求已取消。請確保您沒有連續點擊按鈕。';
-                } else if (error.code === 'auth/operation-not-allowed') {
-                    errorMessage = 'Google 登入方式未啟用！請檢查 Firebase Console > Authentication > Sign-in method，並啟用 Google。';
-                } else {
-                    errorMessage = `登入失敗: ${error.message}\n錯誤碼: ${error.code}`;
+                if (!firebaseConfig) {
+                    throw new Error("Firebase 設定檔遺失。");
                 }
 
-                displayAlert(errorMessage);
-            }
-        }
-
-        async function handleSignOut() {
-            try {
-                await signOut(auth);
-                // 成功登出後，我們讓它自動轉為匿名登入狀態 (這是 Canvas 環境的慣例)
-                await signInAnonymously(auth); 
-                // onAuthStateChanged 會自動處理 UI 更新
-            } catch (error) {
-                console.error("Sign-out Error:", error);
-                displayAlert(`登出失敗: ${error.message}`);
-            }
-        }
-
-        async function initApp() {
-            appIdDisplay.textContent = `App ID: ${appId}`;
-            try {
-                app = initializeApp(firebaseConfig);
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
                 auth = getAuth(app);
-                
-                // 1. 處理 Canvas 環境的自定義 Token 登入
+
+                // 執行登入
                 if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken).catch(async (error) => {
-                        console.warn("Custom token sign-in failed, falling back to anonymous:", error);
-                        // 如果自定義 token 失敗，則嘗試匿名登入
-                        await signInAnonymously(auth);
-                    });
+                    await signInWithCustomToken(auth, initialAuthToken);
+                    console.log("使用自訂 Token 登入成功。");
                 } else {
-                    // 2. 如果沒有自定義 token，則直接匿名登入
                     await signInAnonymously(auth);
+                    console.log("使用匿名登入成功。");
                 }
 
-                // 3. 設置認證狀態監聽器
-                onAuthStateChanged(auth, (user) => {
-                    updateUI(user);
+                // 取得使用者 ID
+                userId = auth.currentUser?.uid || 'anonymous-user';
+                userIdDisplay.textContent = `使用者 ID (匿名): ${userId}`;
+                
+                // 啟動資料監聽
+                startDataListener();
+
+                // 隱藏載入畫面，顯示應用程式
+                loadingOverlay.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                
+                // 確保 Lucide icons 正確渲染
+                lucide.createIcons();
+
+            } catch (error) {
+                console.error("Firebase 初始化或登入失敗:", error);
+                loadingOverlay.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                userIdDisplay.textContent = "登入失敗，無法使用資料庫功能。";
+                showMessage(`錯誤：Firebase 登入失敗。${error.message}`, true);
+            }
+        }
+
+        // --- 5. 交易資料庫路徑設定 ---
+        function getCollectionPath(uid) {
+            // 私人資料路徑: /artifacts/{appId}/users/{userId}/expenses
+            return `artifacts/${appId}/users/${uid}/expenses`;
+        }
+
+        // --- 6. 即時資料監聽與渲染 ---
+        function startDataListener() {
+            if (!db || userId === 'unknown') {
+                console.warn("Firestore 或 User ID 尚未準備好。");
+                return;
+            }
+
+            const transactionsColRef = collection(db, getCollectionPath(userId));
+            
+            // 由於 Firestore 避免使用 orderBy，我們將所有文件抓取回來後在客戶端進行排序
+            const q = query(transactionsColRef);
+
+            onSnapshot(q, (snapshot) => {
+                const transactions = [];
+                snapshot.forEach(doc => {
+                    // 確保時間戳記存在，否則在客戶端添加一個 fallback
+                    const data = doc.data();
+                    transactions.push({
+                        id: doc.id,
+                        description: data.description,
+                        amount: data.amount,
+                        createdAt: data.createdAt ? data.createdAt.toDate() : new Date(), // 客戶端排序用
+                    });
                 });
 
-            } catch (error) {
-                console.error("Firebase Initialization Error:", error);
-                statusMessageEl.textContent = `錯誤: Firebase 初始化失敗 (${error.message})`;
-                authButton.textContent = '無法連線';
-                authButton.classList.remove('google-btn');
-                authButton.classList.add('bg-gray-400', 'text-gray-200', 'opacity-50', 'cursor-not-allowed');
-                authButton.disabled = true;
+                // 1. 客戶端排序：依照建立時間 (新的在前面)
+                transactions.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+                
+                // 2. 更新 UI
+                renderTransactions(transactions);
+                calculateBalance(transactions);
+
+            }, (error) => {
+                console.error("監聽交易記錄失敗:", error);
+                showMessage("無法載入交易記錄。", true);
+            });
+        }
+        
+        // --- 7. 渲染交易列表 ---
+        function renderTransactions(transactions) {
+            listElement.innerHTML = '';
+
+            if (transactions.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            emptyState.classList.add('hidden');
+
+            transactions.forEach(transaction => {
+                const isIncome = transaction.amount > 0;
+                const sign = isIncome ? '+' : '-';
+                const typeClass = isIncome ? 'income' : 'expense';
+                const icon = isIncome ? 'trending-up' : 'trending-down';
+                const formattedAmount = Math.abs(transaction.amount).toFixed(2).toLocaleString('en-US');
+
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between bg-white p-4 rounded-xl shadow-sm border-l-4 ' + (isIncome ? 'border-emerald-500' : 'border-red-500');
+                
+                const dateOptions = { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
+                const formattedDate = transaction.createdAt.toLocaleDateString('zh-TW', dateOptions);
+
+                item.innerHTML = `
+                    <div class="flex items-center min-w-0 flex-1">
+                        <i data-lucide="${icon}" class="w-5 h-5 ${isIncome ? 'text-emerald-500' : 'text-red-500'} mr-3 flex-shrink-0"></i>
+                        <div class="min-w-0">
+                            <p class="font-medium text-gray-800 truncate">${transaction.description}</p>
+                            <p class="text-xs text-gray-400 mt-0.5">${formattedDate}</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center ml-4 flex-shrink-0">
+                        <span class="font-bold text-lg ${typeClass} whitespace-nowrap">
+                            ${sign} NT$ ${formattedAmount}
+                        </span>
+                        <button data-id="${transaction.id}" class="delete-btn ml-3 p-1 text-gray-400 hover:text-red-600 transition duration-150 rounded-full hover:bg-red-50">
+                            <i data-lucide="x" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                `;
+                listElement.appendChild(item);
+            });
+
+            // 重新渲染 Lucide icons
+            lucide.createIcons();
+
+            // 為刪除按鈕添加事件監聽器
+            document.querySelectorAll('.delete-btn').forEach(button => {
+                button.addEventListener('click', async (e) => {
+                    const id = e.currentTarget.getAttribute('data-id');
+                    if (id) {
+                        deleteTransaction(id);
+                    }
+                });
+            });
+        }
+        
+        // --- 8. 計算總餘額 ---
+        function calculateBalance(transactions) {
+            const total = transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
+            const formattedTotal = total.toFixed(2).toLocaleString('en-US');
+            
+            balanceElement.textContent = `NT$ ${formattedTotal}`;
+            balanceElement.classList.remove('text-emerald-600', 'text-red-600');
+            balanceElement.classList.add(total >= 0 ? 'text-emerald-600' : 'text-red-600');
+        }
+
+        // --- 9. 新增交易 ---
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!db || userId === 'unknown') {
+                showMessage("資料庫服務尚未準備好，請稍候。", true);
+                return;
+            }
+
+            const description = descriptionInput.value.trim();
+            const amount = parseFloat(amountInput.value);
+
+            if (!description || isNaN(amount) || amount === 0) {
+                showMessage("請輸入有效的描述和非零的金額。", true);
+                return;
+            }
+
+            try {
+                const docRef = await addDoc(collection(db, getCollectionPath(userId)), {
+                    description: description,
+                    amount: amount,
+                    createdAt: serverTimestamp() // 使用 Firestore 伺服器時間戳記
+                });
+
+                showMessage("交易記錄成功！");
+                descriptionInput.value = '';
+                amountInput.value = '';
+
+            } catch (e) {
+                console.error("新增交易記錄錯誤:", e);
+                showMessage("新增記錄失敗，請檢查網路連線。", true);
+            }
+        });
+
+        // --- 10. 刪除交易 ---
+        async function deleteTransaction(id) {
+            try {
+                const docRef = doc(db, getCollectionPath(userId), id);
+                await deleteDoc(docRef);
+                showMessage("交易已刪除。");
+            } catch (e) {
+                console.error("刪除交易記錄錯誤:", e);
+                showMessage("刪除記錄失敗。", true);
             }
         }
 
-        // Initialize the app when the window loads
-        window.onload = initApp;
+        // 啟動應用程式
+        initializeAppAndAuth();
     </script>
-
 </body>
 </html>
