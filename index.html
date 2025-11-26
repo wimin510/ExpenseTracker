@@ -12,8 +12,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@300;400;500;700&display=swap" rel="stylesheet">
     
     <style>
-        /* Change font to Zen Maru Gothic */
-        body { font-family: 'Zen Maru Gothic', sans-serif; -webkit-tap-highlight-color: transparent; }
+        /* Change font to Zen Maru Gothic and slightly increase base size for better readability */
+        body { 
+            font-family: 'Zen Maru Gothic', sans-serif; 
+            -webkit-tap-highlight-color: transparent; 
+            font-size: 17px; /* Increase base font size slightly */
+        }
         .calc-btn { transition: background-color 0.1s; }
         .calc-btn:active { background-color: #e5e7eb; }
         /* Hide scrollbar for category list */
@@ -31,7 +35,7 @@
         
         /* Modal backdrop fix for mobile touch */
         .modal-backdrop {
-            z-index: 50; /* Ensure it's below the modal (z-50) */
+            z-index: 50; 
             background-color: rgba(0, 0, 0, 0.5);
             position: fixed;
             top: 0;
@@ -48,7 +52,7 @@
             height: 100vh;
             max-width: 600px; /* Max width for larger screens */
             margin: 0 auto;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
         }
 
         /* Ensure header and footer are fixed and content scrolls */
@@ -56,7 +60,14 @@
             flex-grow: 1;
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
+            padding: 1rem;
         }
+
+        /* Improve button tap feedback on touch devices */
+        button:focus:not(:focus-visible) {
+            outline: none;
+        }
+
     </style>
 </head>
 <body class="bg-gray-50">
@@ -64,13 +75,13 @@
         <!-- Header -->
         <header class="bg-white shadow-md p-4 flex justify-between items-center z-10">
             <h1 id="header-title" class="text-2xl font-bold text-gray-800">本月支出</h1>
-            <button id="add-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-lg transition duration-150 ease-in-out">
+            <button id="add-btn" class="bg-blue-600 hover:bg-700 text-white font-bold py-2 px-4 rounded-full shadow-lg transition duration-150 ease-in-out transform hover:scale-105">
                 <i class="fas fa-plus"></i>
             </button>
         </header>
 
         <!-- Main Content (Home View) -->
-        <main id="main-view" class="content-area p-4 space-y-4">
+        <main id="main-view" class="content-area space-y-4">
             <!-- Monthly Summary Card -->
             <div class="bg-white rounded-xl shadow-lg p-6 flex justify-between items-center transition duration-300 transform hover:scale-[1.01] hover:shadow-xl">
                 <div>
@@ -100,15 +111,15 @@
         </main>
 
         <!-- Stats View -->
-        <div id="stats-view" class="content-area p-4 space-y-6 hidden">
+        <div id="stats-view" class="content-area space-y-6 hidden">
             <h2 class="text-xl font-bold text-gray-800 border-b pb-2 mb-4">支出分類統計</h2>
             
             <!-- Filter Options -->
-            <div class="flex space-x-2 bg-white p-3 rounded-xl shadow-sm">
+            <div class="flex space-x-2 bg-white p-3 rounded-xl shadow-md">
                 <select id="stats-month-select" class="flex-1 p-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-700">
                     <!-- Options injected by JS -->
                 </select>
-                <button id="stats-filter-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-150">
+                <button id="stats-filter-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition duration-150">
                     篩選
                 </button>
             </div>
@@ -128,13 +139,13 @@
         </div>
 
         <!-- Settings View -->
-        <div id="settings-view" class="content-area p-4 space-y-6 hidden">
+        <div id="settings-view" class="content-area space-y-6 hidden">
             <h2 class="text-xl font-bold text-gray-800 border-b pb-2 mb-4">應用程式設定</h2>
             
             <section class="bg-white p-5 rounded-xl shadow-lg space-y-4">
                 <h3 class="text-lg font-semibold text-gray-700">資料管理</h3>
                 <p class="text-sm text-gray-600">將所有記錄從 Firestore 資料庫中永久刪除。此操作無法復原。</p>
-                <button id="delete-all-btn" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg shadow-md transition duration-150">
+                <button id="delete-all-btn" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg shadow-md transition duration-150 transform hover:scale-[1.01]">
                     <i class="fas fa-trash-alt mr-2"></i>刪除所有記錄
                 </button>
             </section>
@@ -149,7 +160,7 @@
         <!-- Footer Navigation -->
         <footer class="bg-white border-t border-gray-200 p-2 shadow-inner z-10">
             <div class="flex justify-around">
-                <button id="nav-home-btn" class="nav-btn flex flex-col items-center p-2 text-blue-600">
+                <button id="nav-home-btn" class="nav-btn flex flex-col items-center p-2 text-blue-600 hover:text-blue-500 transition duration-150">
                     <i class="fas fa-home text-xl"></i>
                     <span class="text-xs mt-1">首頁</span>
                 </button>
@@ -166,7 +177,7 @@
     </div>
 
     <!-- Modal for Adding/Editing Record (The main input form) -->
-    <div id="record-modal-backdrop" class="modal-backdrop hidden fixed inset-0 z-40 bg-black bg-opacity-50 flex items-end sm:items-center justify-center transition-opacity duration-300">
+    <div id="record-modal-backdrop" class="modal-backdrop fixed inset-0 z-40 bg-black bg-opacity-50 flex items-end sm:items-center justify-center transition-opacity duration-300">
         <div id="record-modal" class="bg-white w-full sm:w-11/12 md:w-3/4 lg:w-1/2 rounded-t-xl sm:rounded-xl shadow-2xl transform translate-y-0 transition-transform duration-300 max-h-[90vh] flex flex-col">
             <div class="p-5 border-b flex justify-between items-center">
                 <h2 id="modal-title" class="text-xl font-bold text-gray-800">新增記錄</h2>
@@ -194,7 +205,7 @@
                 <!-- Amount Display and Calculator -->
                 <div class="mb-4 bg-gray-100 p-4 rounded-lg shadow-inner">
                     <label class="block text-sm font-medium text-gray-700 mb-1">金額</label>
-                    <div class="text-2xl font-extrabold text-blue-600 p-2 bg-white rounded-lg border border-gray-300 text-right shadow-sm" id="amount-display">0</div>
+                    <div class="text-2xl font-extrabold text-gray-800 p-2 bg-white rounded-lg border border-gray-300 text-right shadow-sm" id="amount-display">0</div>
                 </div>
 
                 <!-- Note Input -->
@@ -231,10 +242,10 @@
                 
                 <!-- Action Buttons -->
                 <div class="flex space-x-3">
-                    <button id="delete-record-btn" class="w-1/3 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg shadow-md transition duration-150 hidden" onclick="deleteRecord()">
+                    <button id="delete-record-btn" class="w-1/3 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg shadow-md transition duration-150 hidden transform hover:scale-[1.01]" onclick="deleteRecord()">
                         刪除
                     </button>
-                    <button id="save-record-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-md transition duration-150">
+                    <button id="save-record-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-md transition duration-150 transform hover:scale-[1.01]">
                         儲存記錄
                     </button>
                 </div>
@@ -242,12 +253,26 @@
         </div>
     </div>
 
-    <!-- Confirmation/Alert Modal -->
-    <div id="confirm-modal-backdrop" class="modal-backdrop hidden fixed inset-0 z-40 bg-black bg-opacity-50 flex items-center justify-center transition-opacity duration-300">
+    <!-- Alert Modal -->
+    <div id="alert-modal" class="modal-backdrop fixed inset-0 z-40 bg-black bg-opacity-50 flex items-center justify-center transition-opacity duration-300">
+        <div class="bg-white w-11/12 sm:w-1/3 rounded-xl shadow-2xl transform scale-95 transition-transform duration-300">
+            <div class="p-6 flex flex-col items-center">
+                <span id="alert-icon" class="text-4xl mb-3"></span>
+                <h3 id="alert-title" class="text-xl font-bold text-gray-800 mb-3 text-center"></h3>
+                <p id="alert-msg" class="text-gray-600 mb-5 text-center text-base"></p>
+                <button onclick="document.getElementById('alert-modal').classList.add('hidden')" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition duration-150 shadow-md">
+                    了解
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal-backdrop" class="modal-backdrop fixed inset-0 z-40 bg-black bg-opacity-50 flex items-center justify-center transition-opacity duration-300">
         <div id="confirm-modal" class="bg-white w-11/12 sm:w-1/3 rounded-xl shadow-2xl transform scale-95 transition-transform duration-300">
             <div class="p-6">
                 <h3 id="confirm-title" class="text-xl font-bold text-gray-800 mb-3">確認操作</h3>
-                <p id="confirm-message" class="text-gray-600 mb-5">您確定要執行此操作嗎？</p>
+                <p id="confirm-message" class="text-gray-600 mb-5 text-base">您確定要執行此操作嗎？</p>
                 <div class="flex justify-end space-x-3">
                     <button id="confirm-cancel-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-lg transition duration-150">
                         取消
@@ -261,7 +286,7 @@
     </div>
 
     <!-- Loading Overlay -->
-    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-75 flex items-center justify-center z-50 hidden">
+    <div id="loading-overlay" class="fixed inset-0 bg-white bg-opacity-80 flex items-center justify-center z-50 hidden">
         <div class="flex flex-col items-center">
             <i class="fas fa-spinner fa-spin text-4xl text-blue-600"></i>
             <p class="mt-3 text-gray-700">載入中...</p>
@@ -282,6 +307,7 @@
             getFirestore, 
             doc, 
             addDoc, 
+            getDocs, 
             setDoc, 
             deleteDoc, 
             onSnapshot, 
@@ -358,7 +384,12 @@
         const statsCategoryBreakdown = document.getElementById('stats-category-breakdown');
         const statsPlaceholder = document.getElementById('stats-placeholder');
 
-        // Confirmation Modal Elements
+        // Confirmation/Alert Modal Elements
+        const alertModal = document.getElementById('alert-modal');
+        const alertIcon = document.getElementById('alert-icon');
+        const alertTitle = document.getElementById('alert-title');
+        const alertMsg = document.getElementById('alert-msg');
+
         const confirmModalBackdrop = document.getElementById('confirm-modal-backdrop');
         const confirmTitle = document.getElementById('confirm-title');
         const confirmMessage = document.getElementById('confirm-message');
@@ -368,7 +399,7 @@
         // --- Utility Functions ---
 
         /**
-         * 格式化金額為貨幣顯示
+         * Formats the amount as currency (TWD).
          * @param {number} amount 
          * @returns {string}
          */
@@ -381,40 +412,63 @@
         }
 
         /**
-         * 格式化時間戳記為日期和時間
-         * @param {number|object} timestamp - 毫秒數或 Firebase Timestamp 物件
-         * @returns {string} 格式化的日期時間字串 (YYYY-MM-DD HH:MM)
+         * Formats timestamp to a locale-specific date and time string (YYYY/MM/DD HH:MM).
+         * @param {number|object} timestamp - Milliseconds or Firebase Timestamp object.
+         * @returns {string} Formatted date/time string.
          */
         function formatTimestamp(timestamp) {
             const date = timestamp?.toDate ? timestamp.toDate() : new Date(timestamp);
-            // 使用 'zh-TW' 區域設定並包含小時/分鐘
+            // Use 'zh-TW' locale to include year, month, day, hour, and minute
             const options = {
                 year: 'numeric', month: '2-digit', day: '2-digit',
                 hour: '2-digit', minute: '2-digit',
-                hour12: false // 使用 24 小時制
+                hour12: false // Use 24-hour format
             };
-            // 替換斜線為破折號，並移除逗號，確保格式一致 (e.g., 2023-11-25 18:00)
+            // Replace slashes with dashes (optional, to match YYYY-MM-DD) and remove the comma.
+            // Note: Firebase security rules are easier to manage when only timestamp is stored.
             return date.toLocaleString('zh-TW', options).replace(/\//g, '-').replace(',', '');
         }
 
         /**
-         * 顯示自定義確認視窗
-         * @param {string} title 標題
-         * @param {string} message 訊息
-         * @param {function} onConfirm 確認時執行的函數
+         * Shows a custom alert modal.
+         * @param {string} title - The title of the alert.
+         * @param {string} message - The main message.
+         * @param {string} type - 'green', 'red', 'orange', or an icon string like '🚨'.
+         */
+        function showAlert(title, message, type = 'orange') {
+            let icon = '';
+            switch(type) {
+                case 'green': icon = '✅'; break;
+                case 'red': icon = '❌'; break;
+                case 'orange': icon = '⚠️'; break;
+                default: icon = type; // Allow passing custom icon like '🚨'
+            }
+
+            alertIcon.innerText = icon;
+            alertTitle.innerText = title;
+            alertMsg.innerText = message;
+            
+            alertModal.classList.remove('hidden');
+        }
+
+        /**
+         * Shows a custom confirmation modal.
+         * @param {string} title - The title.
+         * @param {string} message - The message.
+         * @param {function} onConfirm - Function to execute on confirm.
          */
         function showConfirmModal(title, message, onConfirm) {
             confirmTitle.innerText = title;
             confirmMessage.innerText = message;
             
-            // 清除舊的事件監聽器
+            // Clone and replace to remove old listeners
             const newOkBtn = confirmOkBtn.cloneNode(true);
             confirmOkBtn.parentNode.replaceChild(newOkBtn, confirmOkBtn);
             
             const newCancelBtn = confirmCancelBtn.cloneNode(true);
             confirmCancelBtn.parentNode.replaceChild(newCancelBtn, confirmCancelBtn);
 
-            // 設置新的事件監聽器
+            // Set new listeners
             newOkBtn.addEventListener('click', () => {
                 closeModal('confirm-modal-backdrop');
                 onConfirm();
@@ -427,7 +481,7 @@
         }
 
         /**
-         * 格式化Date物件為 <input type="datetime-local"> 所需的字串格式
+         * Formats a Date object to the string format required by <input type="datetime-local"> (YYYY-MM-DDTHH:MM).
          * @param {Date} date 
          * @returns {string} YYYY-MM-DDTHH:MM
          */
@@ -441,31 +495,31 @@
         }
 
         /**
-         * 解析 <input type="datetime-local"> 字串為 Date 物件
+         * Parses the <input type="datetime-local"> string into a local Date object.
          * @param {string} datetimeLocalString 
          * @returns {Date}
          */
         function parseDateTimeLocal(datetimeLocalString) {
             if (!datetimeLocalString) return new Date();
-            // datetime-local 格式為 YYYY-MM-DDTHH:MM
-            // 由於 new Date() 帶有 T 會被解釋為 UTC，我們將其視為本地時間
+            // datetime-local format is YYYY-MM-DDTHH:MM
             const [datePart, timePart] = datetimeLocalString.split('T');
             const [year, month, day] = datePart.split('-').map(Number);
             const [hours, minutes] = timePart.split(':').map(Number);
             
-            // 構造為本地時間
+            // Construct as local time
             return new Date(year, month - 1, day, hours, minutes);
         }
+
 
         // --- View Controller ---
         
         /**
-         * 切換應用程式視圖 (Home, Stats, Settings)
+         * Switches the application view (Home, Stats, Settings).
          * @param {string} view 
          */
         const navigateTo = (view) => {
             // Get all navigation buttons
-            const [btnHome, btnStats, btnSet] = document.querySelectorAll('.nav-btn');
+            const navBtns = document.querySelectorAll('.nav-btn');
 
             // Reset all views
             main.classList.add('hidden');
@@ -473,7 +527,7 @@
             set.classList.add('hidden');
             
             // Reset all button styles
-            [btnHome, btnStats, btnSet].forEach(btn => {
+            navBtns.forEach(btn => {
                 btn.classList.remove('text-blue-600');
                 btn.classList.add('text-gray-400');
             });
@@ -503,38 +557,36 @@
         }
         
         /**
-         * 開啟一個 Modal
+         * Opens a Modal.
          * @param {string} backdropId 
          */
         window.openModal = (backdropId) => {
             const backdrop = document.getElementById(backdropId);
             if (backdrop) {
                 backdrop.classList.remove('hidden');
-                // Optional: add a class for smooth transition if needed
             }
         };
         
         /**
-         * 關閉一個 Modal
+         * Closes a Modal.
          * @param {string} backdropId 
          */
         window.closeModal = (backdropId) => {
             const backdrop = document.getElementById(backdropId);
             if (backdrop) {
                 backdrop.classList.add('hidden');
-                // Optional: remove transition class
             }
         };
 
         // --- Firebase/Auth/Init ---
 
         /**
-         * 初始化 Firebase 和身份驗證
+         * Initializes Firebase and authentication.
          */
         async function initialize() {
             if (Object.keys(firebaseConfig).length === 0) {
                 console.error("Firebase config is missing.");
-                // Fallback UI or message could be added here
+                showAlert("初始化失敗", "Firebase 配置遺失。請聯繫管理員。", 'red');
                 showLoading(false);
                 return;
             }
@@ -544,29 +596,28 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                // 嘗試使用自定義 token 登入
+                // Attempt to sign in with custom token or anonymously
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
-                    // 如果沒有 token，則匿名登入
                     await signInAnonymously(auth);
                 }
 
-                // 設置身份驗證狀態變更監聽器
+                // Set up auth state change listener
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         userId = user.uid;
                         userIdDisplay.innerText = userId;
-                        // 設定 Firestore 參考路徑： /artifacts/{appId}/users/{userId}/records
+                        // Set Firestore reference path: /artifacts/{appId}/users/{userId}/records
                         recordsRef = collection(db, `artifacts/${appId}/users/${userId}/records`);
                         
-                        // 啟動主數據監聽
+                        // Start main data listener
                         setupRealtimeListener();
                         
-                        // 初始化統計選項
+                        // Initialize stats options
                         initializeStatsMonths();
                     } else {
-                        // 用戶已登出或無法登入
+                        // User logged out or could not sign in
                         userId = null;
                         userIdDisplay.innerText = '未登入';
                         showLoading(false);
@@ -576,6 +627,7 @@
             } catch (error) {
                 console.error("Firebase initialization or sign-in failed:", error);
                 userIdDisplay.innerText = `錯誤: ${error.code}`;
+                showAlert("登入失敗", `Firebase 登入失敗: ${error.code}`, 'red');
                 showLoading(false);
             }
         }
@@ -583,19 +635,19 @@
         // --- Record Operations (CRUD) ---
 
         /**
-         * 設定 Firestore 實時監聽器
+         * Sets up the Firestore real-time listener.
          */
         function setupRealtimeListener() {
             if (!recordsRef) return;
             
-            // 查詢本月記錄，並按時間倒序排列
+            // Query for the current month's records, ordered by timestamp (descending)
             const now = new Date();
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
             
             const q = query(
                 recordsRef,
                 where('timestamp', '>=', startOfMonth),
-                orderBy('timestamp', 'desc') // 使用 'desc' 確保最新的記錄在最上面
+                orderBy('timestamp', 'desc') 
             );
 
             onSnapshot(q, (snapshot) => {
@@ -606,12 +658,13 @@
                 showLoading(false);
             }, (error) => {
                 console.error("Realtime listener failed:", error);
+                showAlert("資料連線錯誤", "無法載入即時記帳資料。", 'red');
                 showLoading(false);
             });
         }
 
         /**
-         * 渲染記錄列表
+         * Renders the list of records.
          * @param {Array} records 
          */
         function renderRecords(records) {
@@ -636,13 +689,13 @@
                         <div class="min-w-0">
                             <p class="font-medium text-gray-800 truncate">${category.name}</p>
                             <p class="text-sm text-gray-500 truncate">${record.note || '無備註'}</p>
-                            <!-- Time Fix: 使用 formatTimestamp 顯示完整的日期和時間 -->
+                            <!-- Time: Displays full date and time (YYYY/MM/DD HH:MM) -->
                             <p class="text-xs text-gray-400">${formatTimestamp(record.timestamp)}</p>
                         </div>
                     </div>
                     <!-- Amount and Edit Button -->
                     <div class="flex items-center space-x-2 flex-shrink-0">
-                        <!-- Color Fix: 將 text-red-600 改為 text-gray-800 -->
+                        <!-- Amount Color: Using neutral dark gray (text-gray-800) -->
                         <span class="text-xl font-semibold text-gray-800">
                             ${formatCurrency(record.amount)}
                         </span>
@@ -656,7 +709,7 @@
         }
 
         /**
-         * 更新本月支出總結
+         * Updates the total monthly expense summary.
          * @param {Array} records 
          */
         function updateMonthlySummary(records) {
@@ -665,12 +718,12 @@
         }
 
         /**
-         * 處理新增/編輯記錄的保存
+         * Handles saving of a new or edited record.
          */
         async function saveRecord() {
             if (!recordsRef) {
                 console.error("Records reference not set. Authentication incomplete.");
-                alert("錯誤：身份驗證尚未完成，請稍候再試。"); // Custom alert needed
+                showAlert("操作失敗", "身份驗證尚未完成，請稍候再試。", 'orange');
                 return;
             }
 
@@ -679,12 +732,12 @@
             const note = recordNote.value.trim();
             const datetimeLocal = recordDateTime.value;
             
-            // 將 datetime-local 字串轉換為 Date 物件，然後轉換為 Firebase Timestamp
+            // Convert datetime-local string to Date object
             const recordDate = parseDateTimeLocal(datetimeLocal);
-            const timestamp = recordDate; // Firestore will handle Date to Timestamp conversion
+            const timestamp = recordDate; 
 
             if (amount <= 0 || !categoryId) {
-                alert("錯誤：請輸入有效金額並選擇一個分類。"); // Custom alert needed
+                showAlert("輸入錯誤", "請輸入有效金額並選擇一個分類。", 'orange');
                 return;
             }
 
@@ -694,30 +747,32 @@
                     amount: amount,
                     category: categoryId,
                     note: note,
-                    timestamp: timestamp // 使用轉換後的 Date 物件
+                    timestamp: timestamp 
                 };
 
                 if (currentEditingId) {
-                    // 編輯現有記錄
+                    // Edit existing record
                     const docRef = doc(db, `artifacts/${appId}/users/${userId}/records`, currentEditingId);
-                    await setDoc(docRef, recordData); // setDoc replaces the entire document
+                    await setDoc(docRef, recordData); 
+                    showAlert("儲存成功", "記錄已更新。", 'green');
                 } else {
-                    // 新增記錄
+                    // Add new record
                     await addDoc(recordsRef, { ...recordData, createdAt: serverTimestamp() });
+                    showAlert("新增成功", "新的記帳記錄已儲存。", 'green');
                 }
 
                 closeModal('record-modal-backdrop');
                 resetRecordModal();
             } catch (error) {
                 console.error("Error saving record:", error);
-                alert("保存記錄失敗，請檢查控制台。"); // Custom alert needed
+                showAlert("儲存失敗", "保存記錄失敗，請檢查控制台錯誤。", 'red');
             } finally {
                 showLoading(false);
             }
         }
 
         /**
-         * 刪除當前編輯的記錄
+         * Deletes the currently editing record.
          */
         window.deleteRecord = () => {
             if (!currentEditingId || !userId) return;
@@ -733,9 +788,10 @@
                         
                         closeModal('record-modal-backdrop');
                         resetRecordModal();
+                        showAlert("刪除成功", "記錄已刪除。", 'green');
                     } catch (error) {
                         console.error("Error deleting record:", error);
-                        alert("刪除記錄失敗，請檢查控制台。"); // Custom alert needed
+                        showAlert("刪除失敗", "刪除記錄失敗，請檢查控制台錯誤。", 'red');
                     } finally {
                         showLoading(false);
                     }
@@ -744,7 +800,7 @@
         };
 
         /**
-         * 載入選定的記錄到 Modal 中進行編輯
+         * Loads the selected record into the Modal for editing.
          * @param {string} recordId 
          */
         window.editRecord = (recordId) => {
@@ -755,17 +811,17 @@
             modalTitle.innerText = '編輯記錄';
             deleteRecordBtn.classList.remove('hidden');
 
-            // 設置金額
+            // Set amount
             currentCalculatorInput = String(record.amount);
             amountDisplay.innerText = currentCalculatorInput;
 
-            // 設置分類
+            // Set category
             selectCategory(record.category);
 
-            // 設置備註
+            // Set note
             recordNote.value = record.note || '';
 
-            // 設置日期時間
+            // Set datetime
             const dateToEdit = record.timestamp?.toDate ? record.timestamp.toDate() : new Date(record.timestamp);
             recordDateTime.value = formatDateTimeLocal(dateToEdit);
 
@@ -773,7 +829,7 @@
         };
 
         /**
-         * 重設記錄 Modal 狀態
+         * Resets the Record Modal state.
          */
         function resetRecordModal() {
             currentEditingId = null;
@@ -782,23 +838,25 @@
             currentCalculatorInput = '0';
             amountDisplay.innerText = '0';
             recordNote.value = '';
-            // 預設日期為當前時間
+            
+            // Default date to current time
             recordDateTime.value = formatDateTimeLocal(new Date());
+            
             currentSelectedCategory = null;
             
-            // 取消所有分類的選中狀態
+            // Reset category selection
             document.querySelectorAll('.category-btn').forEach(btn => {
-                btn.classList.remove('ring-4', 'ring-blue-300');
+                btn.classList.remove('ring-4', 'ring-blue-300', 'border-blue-600');
             });
 
-            // 預設選中第一個分類
+            // Default select the first category
             selectCategory(CATEGORIES[0].id);
         }
 
         // --- Category Selector ---
 
         /**
-         * 渲染分類選擇器
+         * Renders the category selector buttons.
          */
         function renderCategorySelector() {
             categorySelector.innerHTML = CATEGORIES.map(cat => `
@@ -813,19 +871,19 @@
                 </button>
             `).join('');
 
-            // 添加事件監聽器
+            // Add event listeners
             document.querySelectorAll('.category-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     selectCategory(e.currentTarget.dataset.categoryId);
                 });
             });
 
-            // 預設選中第一個
+            // Default select the first one
             selectCategory(CATEGORIES[0].id);
         }
 
         /**
-         * 選中一個分類
+         * Selects a category and updates the UI.
          * @param {string} categoryId 
          */
         function selectCategory(categoryId) {
@@ -841,7 +899,7 @@
         // --- Calculator Logic ---
 
         /**
-         * 處理計算器按鈕點擊
+         * Handles calculator button input.
          * @param {string} value 
          */
         function handleCalculatorInput(value) {
@@ -857,9 +915,11 @@
                 }
             } else if (value === '=') {
                 try {
-                    // 使用 eval 進行計算，但確保只包含數字和基本的運算符號
-                    const result = eval(current.replace(/[^-()\d/*+.]/g, ''));
+                    // Safety check before eval
+                    const safeExpression = current.replace(/[^-()\d/*+.]/g, ''); 
+                    const result = eval(safeExpression);
                     if (isFinite(result)) {
+                        // Limit to 2 decimal places and convert back to string
                         currentCalculatorInput = String(parseFloat(result.toFixed(2)));
                     } else {
                         currentCalculatorInput = '0';
@@ -868,11 +928,9 @@
                     currentCalculatorInput = '0';
                 }
             } else if (value === '.') {
-                // 檢查最後一個數字部分是否已經包含小數點
                 const parts = current.split(/[\+\-\*\/]/);
                 const lastPart = parts[parts.length - 1];
                 if (!lastPart.includes('.')) {
-                    // 避免在運算符後直接加小數點
                     if (['+', '-', '*', '/'].includes(current.slice(-1))) {
                         currentCalculatorInput += '0.';
                     } else {
@@ -880,26 +938,26 @@
                     }
                 }
             } else if (['+', '-', '*', '/'].includes(value)) {
-                // 替換結尾的運算符
+                // Replace trailing operator
                 if (['+', '-', '*', '/'].includes(current.slice(-1))) {
                     currentCalculatorInput = current.slice(0, -1) + value;
                 } else {
                     currentCalculatorInput += value;
                 }
             } else {
-                // 數字輸入
-                if (current === '0' || current === '0.00' || current === String(eval(current)) ) {
+                // Number input
+                if (current === '0' || current === String(eval(current))) {
                     currentCalculatorInput = value;
                 } else {
                     currentCalculatorInput += value;
                 }
             }
             
-            // 更新顯示
+            // Update display
             amountDisplay.innerText = currentCalculatorInput;
         }
 
-        // 添加計算器按鈕事件監聽器
+        // Add calculator button event listeners
         document.querySelectorAll('.calc-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const value = e.currentTarget.dataset.value;
@@ -910,7 +968,7 @@
         // --- Stats Logic ---
 
         /**
-         * 初始化統計月份選擇器
+         * Initializes the stats month selector dropdown.
          */
         function initializeStatsMonths() {
             statsMonthSelect.innerHTML = '';
@@ -918,7 +976,7 @@
             const currentYear = now.getFullYear();
             const currentMonth = now.getMonth();
             
-            // 產生過去 12 個月的選項
+            // Generate options for the last 12 months
             for (let i = 0; i < 12; i++) {
                 const date = new Date(currentYear, currentMonth - i, 1);
                 const year = date.getFullYear();
@@ -931,14 +989,14 @@
                 option.innerText = text;
                 
                 if (i === 0) {
-                    option.selected = true; // 預設選中當前月份
+                    option.selected = true; // Default select current month
                 }
                 statsMonthSelect.appendChild(option);
             }
         }
 
         /**
-         * 執行統計和渲染
+         * Executes stats calculation and rendering for the selected month.
          */
         async function renderStats() {
             if (!recordsRef) return;
@@ -955,12 +1013,12 @@
             const startOfMonth = new Date(year, month - 1, 1);
             const endOfMonth = new Date(year, month, 1); // Next month start is the end of this month
             
-            // 查詢選定月份的記錄
+            // Query for records within the selected month range
             const q = query(
                 recordsRef,
                 where('timestamp', '>=', startOfMonth),
                 where('timestamp', '<', endOfMonth),
-                orderBy('timestamp', 'desc')
+                orderBy('timestamp', 'desc') // Needed if combining with range filters
             );
             
             showLoading(true);
@@ -976,29 +1034,32 @@
 
                 statsPlaceholder.classList.add('hidden');
                 
-                // 1. 計算總支出
+                // 1. Calculate total expense
                 const totalExpense = monthRecords.reduce((sum, record) => sum + (record.amount || 0), 0);
                 statsTotalExpense.innerText = formatCurrency(totalExpense);
 
-                // 2. 按類別分組和求和
+                // 2. Group by category and sum
                 const categoryTotals = monthRecords.reduce((acc, record) => {
                     const catId = record.category || 'other';
                     acc[catId] = (acc[catId] || 0) + (record.amount || 0);
                     return acc;
                 }, {});
 
-                // 3. 渲染統計條
+                // 3. Render stats bars
                 const sortedCategories = Object.entries(categoryTotals)
-                    .sort(([, a], [, b]) => b - a); // 按金額降序排列
+                    .sort(([, a], [, b]) => b - a); // Sort by amount descending
 
                 const categoryHtml = sortedCategories.map(([catId, amount]) => {
                     const category = CATEGORIES.find(c => c.id === catId) || CATEGORIES.find(c => c.id === 'other');
                     const percentage = totalExpense > 0 ? ((amount / totalExpense) * 100).toFixed(1) : 0;
                     
+                    // Get the Tailwind color class and transform it for the text color
+                    const textColorClass = category.color.replace('bg-', 'text-');
+
                     return `
                         <div class="space-y-1">
                             <div class="flex justify-between items-center text-sm font-medium text-gray-800">
-                                <span><i class="${category.icon} mr-2 text-base" style="color:${category.color.replace('bg-', 'text-')};"></i>${category.name}</span>
+                                <span><i class="${category.icon} mr-2 text-base ${textColorClass}"></i>${category.name}</span>
                                 <span>${percentage}% (${formatCurrency(amount)})</span>
                             </div>
                             <div class="w-full bg-gray-200 rounded-full h-3">
@@ -1010,12 +1071,12 @@
                 
                 statsCategoryBreakdown.innerHTML = `
                     <h3 class="text-lg font-semibold text-gray-700 border-b pb-2">分類百分比</h3>
-                    <div class="space-y-4">${categoryHtml}</div>
+                    <div class="space-y-4 pt-2">${categoryHtml}</div>
                 `;
 
             } catch (error) {
                 console.error("Error rendering stats:", error);
-                statsPlaceholder.innerText = '載入統計數據失敗。';
+                showAlert("統計錯誤", "載入統計數據失敗。", 'red');
             } finally {
                 showLoading(false);
             }
@@ -1024,11 +1085,11 @@
         // --- Settings Logic ---
 
         /**
-         * 處理刪除所有記錄
+         * Handles deleting all records.
          */
         document.getElementById('delete-all-btn').addEventListener('click', () => {
             if (!userId) {
-                alert("錯誤：身份驗證尚未完成。"); // Custom alert needed
+                showAlert("操作失敗", "身份驗證尚未完成。", 'orange');
                 return;
             }
 
@@ -1042,23 +1103,23 @@
                         const snapshot = await getDocs(q);
                         
                         if (snapshot.empty) {
-                            alert("沒有記錄可刪除。"); // Custom alert needed
+                            showAlert("操作完成", "沒有記錄可刪除。", 'green');
                             showLoading(false);
                             return;
                         }
 
-                        // 使用批次寫入進行高效刪除
+                        // Use batch writing for efficient deletion
                         const batch = writeBatch(db);
                         snapshot.docs.forEach((doc) => {
                             batch.delete(doc.ref);
                         });
 
                         await batch.commit();
-                        alert("所有記錄已成功刪除。"); // Custom alert needed
-                        navigateTo('home'); // 返回首頁
+                        showAlert("刪除成功", "所有記錄已成功刪除。", 'green');
+                        navigateTo('home'); // Go back to home view
                     } catch (error) {
                         console.error("Error deleting all records:", error);
-                        alert("刪除所有記錄失敗，請檢查控制台。"); // Custom alert needed
+                        showAlert("刪除失敗", "刪除所有記錄失敗，請檢查控制台錯誤。", 'red');
                     } finally {
                         showLoading(false);
                     }
@@ -1089,8 +1150,8 @@
         window.onload = () => {
             showLoading(true);
             initialize();
-            renderCategorySelector(); // 渲染分類選擇器
-            // 預設將日期時間輸入框設為當前時間
+            renderCategorySelector(); // Render category selector buttons
+            // Default date to current time
             recordDateTime.value = formatDateTimeLocal(new Date()); 
         };
 
