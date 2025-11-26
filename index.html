@@ -424,7 +424,7 @@
             let totalBudget = state.categories.reduce((sum, c) => sum + (c.budget || 0), 0);
             let budgetSpentPercent = totalBudget > 0 ? (totalThisMonth / totalBudget) * 100 : 0;
             if (totalBudget > 0) {
-                budgetStatus = `總預算已花費 ${budgetSpentPercent.toFixed(1)}%`;
+                //budgetStatus = `總預算已花費 ${budgetSpentPercent.toFixed(1)}%`;
             }
 
             return `
@@ -433,7 +433,7 @@
                     <div class="bg-green-600 text-white p-4 rounded-xl mb-6 shadow-md">
                         <h2 class="text-lg font-light">${currentMonth} 總支出</h2>
                         <p class="text-4xl font-bold mb-1">NT$ ${totalThisMonth.toLocaleString('zh-TW')}</p>
-                        <p class="text-sm">${budgetStatus}</p>
+                       
                     </div>
 
                     <!-- 記帳表單 -->
