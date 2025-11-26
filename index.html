@@ -37,6 +37,35 @@
             align-items: center;
             justify-content: center;
         }
+        /* 圓形進度條基礎樣式 */
+        .circular-progress {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: conic-gradient(
+                #4CAF50 0%, 
+                #4CAF50 0%, 
+                #f0f0f0 0%
+            );
+        }
+        .circular-progress::before {
+            content: '';
+            position: absolute;
+            width: 70px;
+            height: 70px;
+            background-color: white;
+            border-radius: 50%;
+        }
+        .progress-value {
+            position: relative;
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: #4F5D75;
+        }
     </style>
 </head>
 <body class="flex justify-center items-start min-h-screen">
@@ -90,11 +119,6 @@
             expenses: [],
             categories: [], // {id, name, budget, color}
             paymentMethods: ['現金', '信用卡'],
-            calculator: {
-                isVisible: false,
-                currentInput: '',
-                targetInputId: '',
-            },
             isEditing: false,
             editRecord: null,
         };
@@ -185,27 +209,30 @@
         async function saveExpense(expenseData, recordId = null) {
             try {
                 // 轉換 Date 物件為 Firestore Timestamp
-                expenseData.date = new Date(expenseData.date);
-                expenseData.amount = parseFloat(expenseData.amount);
+                const recordDate = new Date(expenseData.date);
+                const amount = parseFloat(expenseData.amount);
 
                 if (recordId) {
                     const docRef = doc(db, dbPath('expenses'), recordId);
-                    await updateDoc(docRef, expenseData);
+                    await updateDoc(docRef, { ...expenseData, date: recordDate, amount });
                     showToast('紀錄已更新！', 'success');
                 } else {
-                    await setDoc(doc(collection(db, dbPath('expenses'))), {
+                    const newRecord = {
                         ...expenseData,
+                        date: recordDate,
+                        amount,
                         createdAt: serverTimestamp()
-                    });
+                    };
+                    await setDoc(doc(collection(db, dbPath('expenses'))), newRecord);
                     showToast('紀錄已儲存！', 'success');
+                    
+                    // 新增記錄後檢查預算
+                    checkBudgetAlert(newRecord.categoryId, newRecord.date);
                 }
-
-                // 檢查預算並發出提醒
-                checkBudgetAlert(expenseData.categoryId, expenseData.date);
 
                 state.isEditing = false;
                 state.editRecord = null;
-                navigate('quickLog'); // 返回 QuickLog 或 History 頁面
+                navigate('quickLog'); // 返回 QuickLog 頁面
             } catch (e) {
                 console.error("儲存/更新紀錄失敗:", e);
                 showToast('儲存/更新紀錄失敗!', 'error');
@@ -240,19 +267,25 @@
 
         // --- 核心應用邏輯 ---
 
-        // 計算指定分類和月份的總支出
+        /**
+         * 計算指定分類和月份的總支出
+         * @param {string | null} categoryId - 分類 ID，如果為 null 則計算當月總支出
+         * @param {Date} date - 用於確定月份的日期物件
+         * @returns {number} 總支出金額
+         */
         function calculateMonthlySpending(categoryId, date) {
             const targetMonth = date.getFullYear() * 12 + date.getMonth();
             const total = state.expenses
                 .filter(exp => {
                     const expMonth = exp.date.getFullYear() * 12 + exp.date.getMonth();
-                    return exp.categoryId === categoryId && expMonth === targetMonth;
+                    // 修正 #2: 如果 categoryId 為 null，則計算所有類別
+                    return expMonth === targetMonth && (categoryId === null || exp.categoryId === categoryId);
                 })
                 .reduce((sum, exp) => sum + exp.amount, 0);
             return total;
         }
 
-        // 檢查預算並彈出提醒
+        // 檢查預算並彈出提醒 (修正 #4)
         function checkBudgetAlert(categoryId, date) {
             const category = state.categories.find(c => c.id === categoryId);
             if (!category || !category.budget || category.budget <= 0) return;
@@ -264,20 +297,20 @@
             let message = '';
             let title = '預算提醒';
 
+            // 只有在超過特定百分比時才提醒
             if (percentage >= 100) {
-                message = `您已超出 ${category.name} 分類本月的預算 ${budget} 元！當月已花費 ${totalSpent.toFixed(0)} 元。`;
+                message = `您已超出 ${category.name} 分類本月的預算 ${budget.toLocaleString('zh-TW')} 元！當月已花費 ${totalSpent.toFixed(0).toLocaleString('zh-TW')} 元。`;
                 title = '🚨 預算超支警告';
             } else if (percentage >= 90) {
-                message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0)} 元，已達到預算的 90%！`;
+                message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0).toLocaleString('zh-TW')} 元，已達到預算的 90%！請留意。`;
                 title = '⚠️ 預算接近警告';
             } else if (percentage >= 70) {
-                message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0)} 元，已達到預算的 70%。`;
-            } else if (percentage >= 50) {
-                message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0)} 元，已達到預算的 50%。`;
+                // 70% 提醒可作為一般通知
+                message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0).toLocaleString('zh-TW')} 元，已達到預算的 70%。`;
             }
 
             if (message) {
-                showModal(title, message, null, true);
+                showModal(title, message, null, true); // isAlert = true
             }
         }
 
@@ -297,7 +330,7 @@
                         <p class="mb-6">${content}</p>
                         <div class="flex justify-end space-x-3">
                             ${!isAlert ? `<button id="modal-cancel" class="px-4 py-2 text-gray-600 bg-gray-200 rounded-lg">取消</button>` : ''}
-                            <button id="modal-confirm" class="px-4 py-2 text-white rounded-lg ${onConfirm ? 'btn-primary' : 'bg-gray-500'}">
+                            <button id="modal-confirm" class="px-4 py-2 text-white rounded-lg ${onConfirm ? 'btn-primary' : 'bg-green-500 hover:bg-green-600'}">
                                 ${onConfirm ? '確認' : '關閉'}
                             </button>
                         </div>
@@ -354,35 +387,6 @@
             `;
         }
 
-        // 計算機模態框
-        function renderCalculatorModal() {
-            if (!state.calculator.isVisible) return '';
-
-            const calDisplay = state.calculator.currentInput || '0';
-            const buttons = [
-                '7', '8', '9', 'C',
-                '4', '5', '6', '+',
-                '1', '2', '3', '-',
-                '0', '.', '=', 'OK'
-            ];
-
-            return `
-                <div class="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-50">
-                    <div class="bg-white p-4 rounded-xl shadow-2xl w-11/12 max-w-xs">
-                        <div class="text-right text-3xl font-light mb-3 p-2 bg-gray-100 rounded-lg">${calDisplay}</div>
-                        <div class="grid grid-cols-4 gap-2">
-                            ${buttons.map(btn => `
-                                <button data-value="${btn}" class="calc-btn p-3 rounded-lg text-lg font-bold
-                                    ${btn === 'OK' ? 'col-span-1 bg-green-500 text-white' : btn === 'C' ? 'bg-red-200 text-red-700' : btn === '=' ? 'bg-blue-200 text-blue-700' : 'bg-gray-100 hover:bg-gray-200'}">
-                                    ${btn}
-                                </button>
-                            `).join('')}
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
         // 渲染登入/註冊頁面
         function renderLoginPage() {
             return `
@@ -403,7 +407,7 @@
             const today = new Date().toISOString().split('T')[0];
             const isEditing = state.isEditing;
             const record = state.editRecord || {};
-            const initialAmount = record.amount || 0;
+            const initialAmount = record.amount || ''; // 初始值為空字串，避免顯示 0
 
             const categoryOptions = state.categories.map(c =>
                 `<option value="${c.id}" ${record.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`
@@ -413,14 +417,14 @@
                 `<option value="${p}" ${record.paymentMethod === p ? 'selected' : ''}>${p}</option>`
             ).join('');
 
-            // 頂部總覽
+            // 頂部總覽 (修正 #2: 傳入 null 計算當月總支出)
             const totalThisMonth = calculateMonthlySpending(null, new Date());
             let currentMonth = new Date().toLocaleString('zh-TW', { month: 'long', year: 'numeric' });
             let budgetStatus = '無預算資訊';
             let totalBudget = state.categories.reduce((sum, c) => sum + (c.budget || 0), 0);
             let budgetSpentPercent = totalBudget > 0 ? (totalThisMonth / totalBudget) * 100 : 0;
             if (totalBudget > 0) {
-                budgetStatus = `總預算已花費 ${budgetSpentPercent.toFixed(0)}%`;
+                budgetStatus = `總預算已花費 ${budgetSpentPercent.toFixed(1)}%`;
             }
 
             return `
@@ -443,20 +447,12 @@
                             <input type="date" id="date" name="date" value="${record.date ? record.date.toISOString().split('T')[0] : today}" class="w-full p-3 border border-gray-300 rounded-xl" required>
                         </div>
                         
-                        <!-- 金額 (可點擊輸入) -->
+                        <!-- 金額 (標準輸入框，無計算機) -->
                         <div>
                             <label for="amount" class="text-sm text-gray-500 block mb-1">金額</label>
-                            <div class="relative">
-                                <!-- 移除 readonly 允許直接輸入 (修正 #2) -->
-                                <input type="number" id="amount" name="amount" value="${initialAmount}" 
-                                    class="w-full p-3 text-2xl font-bold text-accent border border-gray-300 rounded-xl pr-12" required
-                                    min="0.01" step="0.01">
-                                <button type="button" id="open-calculator-btn" class="absolute inset-y-0 right-0 p-3 flex items-center justify-center text-gray-500">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                      <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25m-4.5 9V5.25A2.25 2.25 0 0 0 10.5 3h-1.5a2.25 2.25 0 0 0-2.25 2.25v7.5a2.25 2.25 0 0 0 2.25 2.25h.75m4.5-9V5.25A2.25 2.25 0 0 0 16.5 3h-1.5a2.25 2.25 0 0 0-2.25 2.25v7.5a2.25 2.25 0 0 0 2.25 2.25h.75m4.5-9V5.25A2.25 2.25 0 0 0 21 3h-1.5a2.25 2.25 0 0 0-2.25 2.25v7.5a2.25 2.25 0 0 0 2.25 2.25h.75M9 15.75V18a2.25 2.25 0 0 0 2.25 2.25h1.5A2.25 2.25 0 0 0 15 18v-2.25" />
-                                    </svg>
-                                </button>
-                            </div>
+                            <input type="number" id="amount" name="amount" value="${initialAmount}" 
+                                class="w-full p-3 text-2xl font-bold text-accent border border-gray-300 rounded-xl" required
+                                min="0.01" step="0.01" placeholder="輸入金額">
                         </div>
 
                         <!-- 分類 -->
@@ -567,10 +563,53 @@
 
         // 渲染總覽頁面
         function renderSummaryPage() {
-            // 總覽邏輯
+            const today = new Date();
+            const currentMonthKey = today.getFullYear() + '-' + (today.getMonth() + 1).toString().padStart(2, '0');
+            const totalThisMonth = calculateMonthlySpending(null, today);
+            
+            // 修正 #3: 計算各分類支出
+            const categorySpending = state.categories.map(cat => {
+                const spent = calculateMonthlySpending(cat.id, today);
+                const budget = cat.budget || 0;
+                const percent = budget > 0 ? (spent / budget) * 100 : 0;
+                
+                // 計算圓形進度條的 conic-gradient 顏色
+                const progressColor = percent >= 100 ? '#FF6B6B' : '#4ECDC4'; // 超支用紅色
+                const conicGradient = `conic-gradient(${progressColor} ${percent}%, #f0f0f0 ${percent}%)`;
+                
+                return {
+                    ...cat,
+                    spent,
+                    budget,
+                    percent: Math.min(percent, 100), // 進度條不超過 100%
+                    displayPercent: percent.toFixed(1),
+                    conicGradient
+                };
+            }).filter(cat => cat.spent > 0 || cat.budget > 0);
+
+            const categorySummaryHtml = categorySpending.map(cat => `
+                <div class="flex items-center justify-between p-3 bg-white rounded-xl shadow-sm border border-gray-100">
+                    <div class="flex-1">
+                        <p class="font-bold text-gray-800 flex items-center">
+                            <span class="inline-block w-3 h-3 mr-2 rounded-full" style="background-color: ${cat.color};"></span>
+                            ${cat.name}
+                        </p>
+                        <p class="text-sm text-gray-500">已花費 NT$ ${cat.spent.toLocaleString('zh-TW')}</p>
+                        <p class="text-xs text-gray-400">預算 NT$ ${cat.budget.toLocaleString('zh-TW')}</p>
+                    </div>
+                    <div class="circular-progress" style="background: ${cat.conicGradient};">
+                        <span class="progress-value">${cat.displayPercent}%</span>
+                    </div>
+                </div>
+            `).join('');
+
+
+            // 每月總結 (非當月)
             const monthlyTotals = state.expenses.reduce((acc, exp) => {
                 const monthKey = exp.date.getFullYear() + '-' + (exp.date.getMonth() + 1).toString().padStart(2, '0');
-                acc[monthKey] = (acc[monthKey] || 0) + exp.amount;
+                if (monthKey !== currentMonthKey) {
+                    acc[monthKey] = (acc[monthKey] || 0) + exp.amount;
+                }
                 return acc;
             }, {});
 
@@ -600,10 +639,22 @@
                 <div class="p-5 pb-20">
                     <h1 class="text-3xl font-bold mb-6 text-gray-800">支出總覽</h1>
                     
+                    <!-- 本月總結 -->
+                    <div class="bg-green-100 p-4 rounded-xl mb-8 shadow-md border-2 border-green-500">
+                        <h2 class="text-2xl font-bold mb-3 text-green-700">${currentMonthKey} 總結</h2>
+                        <p class="text-4xl font-extrabold text-accent mb-4">NT$ ${totalThisMonth.toLocaleString('zh-TW')}</p>
+                        
+                        <h3 class="text-lg font-bold mb-2 text-gray-700">分類分佈</h3>
+                        <div class="space-y-3">
+                            ${categorySummaryHtml || '<p class="text-gray-500 text-sm">本月尚無分類支出數據。</p>'}
+                        </div>
+                    </div>
+
+
                     <h2 class="text-2xl font-bold mb-4 text-blue-600">年度總結</h2>
                     <div class="space-y-3 mb-8">${yearlyHtml || '<p class="text-gray-500">尚無年度數據</p>'}</div>
 
-                    <h2 class="text-2xl font-bold mb-4 text-gray-800">每月總結</h2>
+                    <h2 class="text-2xl font-bold mb-4 text-gray-800">過往月份總結</h2>
                     <div class="space-y-3">${monthlyHtml || '<p class="text-gray-500">尚無月份數據</p>'}</div>
                 </div>
             `;
@@ -616,7 +667,7 @@
                 const budget = c.budget || 0;
                 const percent = budget > 0 ? (totalSpent / budget) * 100 : 0;
                 const progressBarWidth = Math.min(percent, 100);
-                const progressBarColor = percent > 90 ? 'bg-red-500' : percent > 70 ? 'bg-orange-500' : percent > 50 ? 'bg-yellow-500' : 'bg-green-500';
+                const progressBarColor = percent >= 100 ? 'bg-red-500' : percent > 70 ? 'bg-orange-500' : 'bg-green-500';
 
                 return `
                     <div class="bg-white p-4 rounded-xl shadow-sm mb-3 border border-gray-100" data-category-id="${c.id}">
@@ -664,6 +715,7 @@
                     <div class="mb-6">
                         ${paymentMethodsHtml}
                     </div>
+                    <p class="text-sm text-gray-500">用戶ID: ${userId}</p>
                 </div>
             `;
         }
@@ -702,7 +754,8 @@
                     ${renderNavBar()}
                 </div>
             `;
-            modalContainer.innerHTML = renderCalculatorModal();
+            // 移除計算機相關渲染
+            modalContainer.innerHTML = '';
 
             // 重新附加事件監聽器
             attachEventListeners(page);
@@ -723,26 +776,12 @@
                 const form = document.getElementById('expense-form');
                 if (form) {
                     form.addEventListener('submit', handleExpenseFormSubmit);
-                    // 移除點擊金額欄位開啟計算機的邏輯，允許直接輸入 (修正 #2)
-                    
-                    // 點擊按鈕開啟計算機
-                    document.getElementById('open-calculator-btn')?.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        openCalculator('amount');
-                    });
                 }
             }
 
             // 設定頁面事件
             if (page === 'settings') {
                 document.getElementById('logout-btn')?.addEventListener('click', handleLogout);
-            }
-
-            // 計算機事件
-            if (state.calculator.isVisible) {
-                document.querySelectorAll('.calc-btn').forEach(button => {
-                    button.addEventListener('click', handleCalculatorInput);
-                });
             }
         }
 
@@ -796,23 +835,27 @@
             const recordId = form.elements['record-id'].value;
             const amountVal = form.elements['amount'].value;
 
-            if (parseFloat(amountVal) <= 0 || isNaN(parseFloat(amountVal))) {
+            const parsedAmount = parseFloat(amountVal);
+            if (parsedAmount <= 0 || isNaN(parsedAmount)) {
                  return showToast('金額必須是有效的數字且大於 0', 'error');
             }
             
             const expenseData = {
                 date: form.elements['date'].value,
-                amount: amountVal,
+                amount: parsedAmount,
                 categoryId: form.elements['categoryId'].value,
                 paymentMethod: form.elements['paymentMethod'].value,
                 note: form.elements['note'].value.trim(),
             };
 
             saveExpense(expenseData, recordId || null);
-            // 重置表單
-            form.reset();
-            form.elements['date'].value = new Date().toISOString().split('T')[0]; // 保持日期為今天
-            form.elements['amount'].value = 0; // 重置金額
+            
+            // 重置表單 (如果是新增模式)
+            if (!recordId) {
+                form.reset();
+                form.elements['date'].value = new Date().toISOString().split('T')[0]; // 保持日期為今天
+                form.elements['amount'].value = ''; // 重置金額
+            }
         }
 
         // 歷史紀錄 - 啟動編輯模式
@@ -925,102 +968,17 @@
             );
         };
 
-        // --- 計算機邏輯 ---
-
-        function openCalculator(targetId) {
-            // 從輸入欄位讀取當前值作為計算機的初始值
-            const currentAmount = document.getElementById(targetId)?.value || '0';
-            state.calculator.currentInput = currentAmount === '0' || currentAmount === '' ? '' : currentAmount;
-            state.calculator.targetInputId = targetId;
-            state.calculator.isVisible = true;
-            renderApp();
-        }
-        
-        function handleCalculatorInput(e) {
-            e.preventDefault();
-            const value = e.target.getAttribute('data-value');
-            let current = state.calculator.currentInput;
-
-            switch (value) {
-                case 'C':
-                    current = '';
-                    break;
-                case '=':
-                    try {
-                        // 使用 eval 進行計算，並將結果四捨五入到小數點後兩位
-                        current = eval(current.replace(/×/g, '*').replace(/÷/g, '/')).toFixed(2).replace(/\.00$/, '');
-                    } catch (e) {
-                        current = '錯誤';
-                    }
-                    break;
-                case 'OK':
-                    // 1. 執行最終計算 (如果還沒按 =)
-                    if (current.match(/[+\-*/×÷]/)) {
-                        try {
-                           current = eval(current.replace(/×/g, '*').replace(/÷/g, '/')).toFixed(2);
-                        } catch (e) {
-                           current = '0.00';
-                        }
-                    } else if (current === '' || current === '錯誤') {
-                        current = '0.00';
-                    } else {
-                        // 確保 current 是一個有效的數字字串
-                        try {
-                            current = parseFloat(current).toFixed(2);
-                        } catch (e) {
-                            current = '0.00';
-                        }
-                    }
-                    
-                    // 2. 傳輸結果到表單 (修正 #1)
-                    const targetInput = document.getElementById(state.calculator.targetInputId);
-                    const finalValue = parseFloat(current);
-
-                    if (targetInput) {
-                        // 設定值，如果是整數則不帶小數點，否則保留兩位小數
-                        targetInput.value = finalValue > 0 ? (finalValue % 1 === 0 ? finalValue.toFixed(0) : finalValue.toFixed(2)) : 0;
-                    }
-                    
-                    // 3. 關閉計算機
-                    state.calculator.isVisible = false;
-                    state.calculator.currentInput = '';
-                    break;
-                case '+':
-                case '-':
-                case '×':
-                case '÷':
-                    // 避免連續操作符
-                    const lastChar = current.slice(-1);
-                    if (['+', '-', '×', '÷'].includes(lastChar)) {
-                        current = current.slice(0, -1) + value;
-                    } else if (current !== '' && current !== '錯誤') {
-                        current += value;
-                    }
-                    break;
-                case '.':
-                    // 檢查當前數字中是否已有小數點
-                    const parts = current.split(/[+\-*/×÷]/);
-                    const lastPart = parts[parts.length - 1];
-                    if (!lastPart.includes('.')) {
-                        current += value;
-                    }
-                    break;
-                default: // 數字
-                    if (current === '錯誤') current = '';
-                    current += value;
-                    break;
-            }
-
-            state.calculator.currentInput = current;
-            renderApp();
-        }
-
-        // 將 navigate 函數暴露給全域 window
+        // 將 navigate, startEdit, cancelEdit, confirmDelete, openAddCategoryModal, editCategory, confirmDeleteCategory 函數暴露給全域 window
         window.navigate = navigate;
+        window.startEdit = window.startEdit;
+        window.cancelEdit = window.cancelEdit;
+        window.confirmDelete = window.confirmDelete;
+        window.openAddCategoryModal = window.openAddCategoryModal;
+        window.editCategory = window.editCategory;
+        window.confirmDeleteCategory = window.confirmDeleteCategory;
         
         // 首次渲染應用程式
         // 由於 onAuthStateChanged 會在初始化後觸發，我們只需確保初始認證邏輯啟動即可。
-        // 如果沒有啟動認證流程，則先渲染登入頁面
         if (typeof __initial_auth_token === 'undefined') {
             renderApp();
         }
