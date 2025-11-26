@@ -338,6 +338,7 @@
         let currentEditingId = null;
         let currentCalculatorInput = '0';
         let currentSelectedCategory = null;
+        let isInitialLoadComplete = false; // <-- 新增：用於控制載入畫面只在首次載入完成後關閉
 
         const CATEGORIES = [
             { id: 'food', name: '餐飲', icon: 'fas fa-utensils', color: 'bg-green-500' },
@@ -620,7 +621,7 @@
                         // User logged out or could not sign in
                         userId = null;
                         userIdDisplay.innerText = '未登入';
-                        showLoading(false);
+                        showLoading(false); // Only hides loading if auth fails or logs out
                     }
                 });
 
@@ -651,15 +652,22 @@
             );
 
             onSnapshot(q, (snapshot) => {
-                showLoading(true);
+                // *** 修正載入畫面邏輯 ***
+                // 1. 處理數據
                 currentRecords = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 renderRecords(currentRecords);
                 updateMonthlySummary(currentRecords);
-                showLoading(false);
+                
+                // 2. 只有在首次載入完成後才隱藏載入畫面
+                if (!isInitialLoadComplete) {
+                    showLoading(false);
+                    isInitialLoadComplete = true;
+                }
+
             }, (error) => {
                 console.error("Realtime listener failed:", error);
                 showAlert("資料連線錯誤", "無法載入即時記帳資料。", 'red');
-                showLoading(false);
+                showLoading(false); // 錯誤時確保關閉載入畫面
             });
         }
 
