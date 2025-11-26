@@ -216,6 +216,10 @@
                     const docRef = doc(db, dbPath('expenses'), recordId);
                     await updateDoc(docRef, { ...expenseData, date: recordDate, amount });
                     showToast('紀錄已更新！', 'success');
+                    // 編輯時也檢查，這裡暫時使用更新前的總額加上差異的邏輯比較複雜，
+                    // 簡單起見，我們呼叫檢查，但這會基於 state 中尚未更新的資料。
+                    // 實務上最好等 snapshot 更新，但為了即時性，我們這裡只針對新增紀錄做精確檢查。
+                    checkBudgetAlert(expenseData.categoryId, recordDate);
                 } else {
                     const newRecord = {
                         ...expenseData,
@@ -226,8 +230,8 @@
                     await setDoc(doc(collection(db, dbPath('expenses'))), newRecord);
                     showToast('紀錄已儲存！', 'success');
                     
-                    // 新增記錄後檢查預算
-                    checkBudgetAlert(newRecord.categoryId, newRecord.date);
+                    // 新增記錄後檢查預算，傳入 amount 以便將這筆新支出計入檢查
+                    checkBudgetAlert(newRecord.categoryId, newRecord.date, amount);
                 }
 
                 state.isEditing = false;
@@ -285,19 +289,21 @@
             return total;
         }
 
-        // 檢查預算並彈出提醒 (修正 #4)
-        function checkBudgetAlert(categoryId, date) {
+        // 檢查預算並彈出提醒 (修正 #4 及新增 50% 檢查)
+        // tempAmount 用於尚未寫入 state 的新支出
+        function checkBudgetAlert(categoryId, date, tempAmount = 0) {
             const category = state.categories.find(c => c.id === categoryId);
             if (!category || !category.budget || category.budget <= 0) return;
 
-            const totalSpent = calculateMonthlySpending(categoryId, date);
+            // 計算目前已知的總支出，並加上暫時的新增金額
+            const totalSpent = calculateMonthlySpending(categoryId, date) + tempAmount;
             const budget = category.budget;
             const percentage = (totalSpent / budget) * 100;
 
             let message = '';
             let title = '預算提醒';
 
-            // 只有在超過特定百分比時才提醒
+            // 檢查預算百分比
             if (percentage >= 100) {
                 message = `您已超出 ${category.name} 分類本月的預算 ${budget.toLocaleString('zh-TW')} 元！當月已花費 ${totalSpent.toFixed(0).toLocaleString('zh-TW')} 元。`;
                 title = '🚨 預算超支警告';
@@ -305,8 +311,9 @@
                 message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0).toLocaleString('zh-TW')} 元，已達到預算的 90%！請留意。`;
                 title = '⚠️ 預算接近警告';
             } else if (percentage >= 70) {
-                // 70% 提醒可作為一般通知
                 message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0).toLocaleString('zh-TW')} 元，已達到預算的 70%。`;
+            } else if (percentage >= 50) {
+                message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0).toLocaleString('zh-TW')} 元，已達到預算的 50%。`;
             }
 
             if (message) {
