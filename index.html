@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>無名帳簿</title>
+    <title>Zen 記帳本</title>
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入 Zen Maru Gothic 字體 -->
@@ -447,9 +447,10 @@
                         <div>
                             <label for="amount" class="text-sm text-gray-500 block mb-1">金額</label>
                             <div class="relative">
+                                <!-- 移除 readonly 允許直接輸入 (修正 #2) -->
                                 <input type="number" id="amount" name="amount" value="${initialAmount}" 
                                     class="w-full p-3 text-2xl font-bold text-accent border border-gray-300 rounded-xl pr-12" required
-                                    min="0.01" step="0.01" readonly>
+                                    min="0.01" step="0.01">
                                 <button type="button" id="open-calculator-btn" class="absolute inset-y-0 right-0 p-3 flex items-center justify-center text-gray-500">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                                       <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25m-4.5 9V5.25A2.25 2.25 0 0 0 10.5 3h-1.5a2.25 2.25 0 0 0-2.25 2.25v7.5a2.25 2.25 0 0 0 2.25 2.25h.75m4.5-9V5.25A2.25 2.25 0 0 0 16.5 3h-1.5a2.25 2.25 0 0 0-2.25 2.25v7.5a2.25 2.25 0 0 0 2.25 2.25h.75m4.5-9V5.25A2.25 2.25 0 0 0 21 3h-1.5a2.25 2.25 0 0 0-2.25 2.25v7.5a2.25 2.25 0 0 0 2.25 2.25h.75M9 15.75V18a2.25 2.25 0 0 0 2.25 2.25h1.5A2.25 2.25 0 0 0 15 18v-2.25" />
@@ -722,8 +723,9 @@
                 const form = document.getElementById('expense-form');
                 if (form) {
                     form.addEventListener('submit', handleExpenseFormSubmit);
-                    // 點擊金額欄位或按鈕開啟計算機
-                    document.getElementById('amount')?.addEventListener('click', () => openCalculator('amount'));
+                    // 移除點擊金額欄位開啟計算機的邏輯，允許直接輸入 (修正 #2)
+                    
+                    // 點擊按鈕開啟計算機
                     document.getElementById('open-calculator-btn')?.addEventListener('click', (e) => {
                         e.preventDefault();
                         openCalculator('amount');
@@ -794,8 +796,8 @@
             const recordId = form.elements['record-id'].value;
             const amountVal = form.elements['amount'].value;
 
-            if (parseFloat(amountVal) <= 0) {
-                 return showToast('金額必須大於 0', 'error');
+            if (parseFloat(amountVal) <= 0 || isNaN(parseFloat(amountVal))) {
+                 return showToast('金額必須是有效的數字且大於 0', 'error');
             }
             
             const expenseData = {
@@ -810,6 +812,7 @@
             // 重置表單
             form.reset();
             form.elements['date'].value = new Date().toISOString().split('T')[0]; // 保持日期為今天
+            form.elements['amount'].value = 0; // 重置金額
         }
 
         // 歷史紀錄 - 啟動編輯模式
@@ -925,8 +928,9 @@
         // --- 計算機邏輯 ---
 
         function openCalculator(targetId) {
+            // 從輸入欄位讀取當前值作為計算機的初始值
             const currentAmount = document.getElementById(targetId)?.value || '0';
-            state.calculator.currentInput = currentAmount === '0' ? '' : currentAmount;
+            state.calculator.currentInput = currentAmount === '0' || currentAmount === '' ? '' : currentAmount;
             state.calculator.targetInputId = targetId;
             state.calculator.isVisible = true;
             renderApp();
@@ -944,27 +948,37 @@
                 case '=':
                     try {
                         // 使用 eval 進行計算，並將結果四捨五入到小數點後兩位
-                        current = eval(current.replace('×', '*').replace('÷', '/')).toFixed(2).replace(/\.00$/, '');
+                        current = eval(current.replace(/×/g, '*').replace(/÷/g, '/')).toFixed(2).replace(/\.00$/, '');
                     } catch (e) {
                         current = '錯誤';
                     }
                     break;
                 case 'OK':
                     // 1. 執行最終計算 (如果還沒按 =)
-                    if (current.match(/[+\-*/]/)) {
+                    if (current.match(/[+\-*/×÷]/)) {
                         try {
-                           current = eval(current.replace('×', '*').replace('÷', '/')).toFixed(2).replace(/\.00$/, '');
+                           current = eval(current.replace(/×/g, '*').replace(/÷/g, '/')).toFixed(2);
                         } catch (e) {
-                           current = '0';
+                           current = '0.00';
                         }
                     } else if (current === '' || current === '錯誤') {
-                        current = '0';
+                        current = '0.00';
+                    } else {
+                        // 確保 current 是一個有效的數字字串
+                        try {
+                            current = parseFloat(current).toFixed(2);
+                        } catch (e) {
+                            current = '0.00';
+                        }
                     }
                     
-                    // 2. 傳輸結果到表單
+                    // 2. 傳輸結果到表單 (修正 #1)
                     const targetInput = document.getElementById(state.calculator.targetInputId);
+                    const finalValue = parseFloat(current);
+
                     if (targetInput) {
-                        targetInput.value = parseFloat(current).toFixed(2);
+                        // 設定值，如果是整數則不帶小數點，否則保留兩位小數
+                        targetInput.value = finalValue > 0 ? (finalValue % 1 === 0 ? finalValue.toFixed(0) : finalValue.toFixed(2)) : 0;
                     }
                     
                     // 3. 關閉計算機
@@ -985,7 +999,7 @@
                     break;
                 case '.':
                     // 檢查當前數字中是否已有小數點
-                    const parts = current.split(/[+\-*/]/);
+                    const parts = current.split(/[+\-*/×÷]/);
                     const lastPart = parts[parts.length - 1];
                     if (!lastPart.includes('.')) {
                         current += value;
