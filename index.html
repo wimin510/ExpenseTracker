@@ -2,889 +2,1014 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>記帳小幫手</title>
-    <!-- Tailwind CSS -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>無名帳簿</title>
+    <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts: Zen Maru Gothic -->
-    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@300;400;500;700&display=swap" rel="stylesheet">
-    
+    <!-- 引入 Zen Maru Gothic 字體 -->
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        /* Change font to Zen Maru Gothic and slightly increase base size for better readability */
-        body { 
-            font-family: 'Zen Maru Gothic', sans-serif; 
-            -webkit-tap-highlight-color: transparent; 
-            font-size: 17px; /* Increase base font size slightly */
+        /* 設定 Zen Maru Gothic 為主要字體 */
+        body {
+            font-family: 'Zen Maru Gothic', sans-serif;
+            background-color: #f8f8f8;
         }
-        .calc-btn { transition: background-color 0.1s; }
-        .calc-btn:active { background-color: #e5e7eb; }
-        /* Hide scrollbar for category list */
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        /* Smooth transition for stats bars */
-        .stat-bar-fill { transition: width 1s ease-out; }
-
-        /* Custom scrollbar for mobile-friendly view */
-        .scrollable-content {
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        /* Full screen container for mobile */
-        #app-container {
+        .app-container {
+            max-width: 420px; /* 模擬手機寬度 */
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
             min-height: 100vh;
-            max-width: 600px;
+        }
+        /* 自定義顏色 */
+        .btn-primary {
+            background-color: #4CAF50; /* 綠色 */
+            color: white;
+            transition: background-color 0.2s;
+        }
+        .btn-primary:hover {
+            background-color: #45a049;
+        }
+        .text-accent {
+            color: #FF6B6B; /* 支出紅 */
+        }
+        .nav-icon {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
         }
     </style>
+</head>
+<body class="flex justify-center items-start min-h-screen">
+    <div id="app" class="app-container bg-white">
+        <!-- 應用程式內容將由 JavaScript 渲染 -->
+    </div>
+
+    <!-- 模態框容器 -->
+    <div id="modal-container"></div>
 
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // 修正：移除不存在的匯出項目，如 endOfMonth 和 startOfMonth
-        import { getFirestore, doc, collection, addDoc, onSnapshot, deleteDoc, updateDoc, setDoc, query, where, Timestamp, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, setDoc, getDoc, updateDoc, deleteDoc, query, where, onSnapshot, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // Use a debug level for logging Firestore operations
+
+        // 設定 Firebase 日誌級別
         setLogLevel('Debug');
 
-        let db, auth;
-        let appId, userId;
+        // --- 全域變數和 Firebase 初始化 ---
+        const appElement = document.getElementById('app');
+        const modalContainer = document.getElementById('modal-container');
+        let db, auth, userId;
+        let isAuthReady = false;
 
-        // Global state for expenses (managed by onSnapshot)
-        window.allExpenses = [];
+        // 從 Canvas 環境變數獲取配置
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : JSON.stringify({
+            apiKey: "AIzaSyBJcP4HOoVFnbzLT-jdnrW1AtAWXVfjEaM",
+            authDomain: "my-expense-tracker-574dd.firebaseapp.com",
+            projectId: "my-expense-tracker-574dd",
+            storageBucket: "my-expense-tracker-574dd.firebasestorage.app",
+            messagingSenderId: "514938495732",
+            appId: "1:514938495732:web:bb3529eca4f2db547b74a1",
+        }));
 
-        // Global variables provided by the Canvas environment
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+        } catch (e) {
+            console.error("Firebase 初始化失敗:", e);
+        }
 
+        const dbPath = (collectionName) => `/artifacts/${appId}/users/${userId}/${collectionName}`;
 
-        // --- Helper Functions ---
-
-        /**
-         * Formats the amount with a comma separator.
-         * @param {number} amount 
-         * @returns {string}
-         */
-        window.formatAmount = (amount) => {
-            if (typeof amount === 'number') {
-                return amount.toLocaleString('zh-TW', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-            }
-            return '0';
+        // 應用程式狀態
+        let state = {
+            currentPage: 'quickLog', // 'login', 'quickLog', 'history', 'summary', 'settings'
+            expenses: [],
+            categories: [], // {id, name, budget, color}
+            paymentMethods: ['現金', '信用卡'],
+            calculator: {
+                isVisible: false,
+                currentInput: '',
+                targetInputId: '',
+            },
+            isEditing: false,
+            editRecord: null,
         };
 
-        /**
-         * Formats the date to a localized short string.
-         * @param {Date | Timestamp} dateOrTimestamp 
-         * @returns {string}
-         */
-        window.formatDate = (dateOrTimestamp) => {
-            const date = dateOrTimestamp instanceof Timestamp ? dateOrTimestamp.toDate() : dateOrTimestamp;
-            return date.toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
-        };
+        // --- 認證流程 ---
 
-        /**
-         * 獲取當前月份的第一天 (00:00:00)
-         * @returns {Date}
-         */
-        function getStartOfMonth() {
-            const today = new Date();
-            return new Date(today.getFullYear(), today.getMonth(), 1, 0, 0, 0);
-        }
-
-        /**
-         * 獲取當前月份的最後一天 (23:59:59)
-         * @returns {Date}
-         */
-        function getEndOfMonth() {
-            const today = new Date();
-            // next month, 0 day (which is the last day of the current month)
-            return new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
-        }
-
-
-        /**
-         * Shows a custom loading overlay.
-         * @param {boolean} show 
-         */
-        function showLoading(show) {
-            const loadingOverlay = document.getElementById('loading-overlay');
-            if (show) loadingOverlay.classList.remove('hidden');
-            else loadingOverlay.classList.add('hidden');
-        }
-
-        /**
-         * Shows a custom alert modal.
-         * @param {string} title - The title of the alert.
-         * @param {string} message - The main message.
-         * @param {string} type - 'green', 'red', 'orange', or an icon string like '🚨'.
-         */
-        window.showAlert = (title, message, type = 'orange') => {
-            const modal = document.getElementById('alert-modal');
-            const iconElement = document.getElementById('alert-icon');
-            const titleElement = document.getElementById('alert-title');
-            const msgElement = document.getElementById('alert-msg');
-
-            let icon = '';
-            switch(type) {
-                case 'green': icon = '✅'; break;
-                case 'red': icon = '❌'; break;
-                case 'orange': icon = '⚠️'; break;
-                default: icon = type; // Allow passing custom icon like '🚨'
-            }
-
-            iconElement.innerText = icon;
-            titleElement.innerText = title;
-            msgElement.innerText = message;
-            
-            modal.classList.remove('hidden');
-        };
-
-        /**
-         * Shows a custom confirmation modal.
-         * @param {string} title - The title of the confirmation.
-         * @param {string} message - The main message.
-         * @param {function} onConfirm - Function to run on confirm.
-         */
-        window.showConfirm = (title, message, onConfirm) => {
-            const modal = document.getElementById('confirm-modal');
-            const titleElement = document.getElementById('confirm-title');
-            const msgElement = document.getElementById('confirm-msg');
-            const confirmBtn = document.getElementById('confirm-ok-btn');
-
-            titleElement.innerText = title;
-            msgElement.innerText = message;
-
-            // Clear previous listener and add new one
-            const newConfirmBtn = confirmBtn.cloneNode(true);
-            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-
-            newConfirmBtn.addEventListener('click', () => {
-                modal.classList.add('hidden');
-                onConfirm();
-            });
-            
-            modal.classList.remove('hidden');
-        };
-
-
-        // --- Expense Data & Categories ---
-
-        const categories = [
-            { name: "餐飲", icon: "🍔", color: "bg-blue-100", text: "text-blue-600" },
-            { name: "交通", icon: "🚗", color: "bg-green-100", text: "text-green-600" },
-            { name: "娛樂", icon: "🎬", color: "bg-purple-100", text: "text-purple-600" },
-            { name: "購物", icon: "🛍️", color: "bg-pink-100", text: "text-pink-600" },
-            { name: "住房", icon: "🏠", color: "bg-yellow-100", text: "text-yellow-600" },
-            { name: "雜項", icon: "💡", color: "bg-gray-100", text: "text-gray-600" },
-        ];
-        
-        let selectedCategory = categories[0];
-        
-        /**
-         * Gets the full category object (with icon and color) by name.
-         * @param {string} name 
-         * @returns {object}
-         */
-        function getCategoryByName(name) {
-            return categories.find(c => c.name === name) || categories[categories.length - 1]; // Default to misc
-        }
-
-        // --- View Logic ---
-
-        const view = (v) => {
-            const main = document.getElementById('main-view');
-            const stats = document.getElementById('stats-view');
-            const set = document.getElementById('set-view');
-            const headerTitle = document.getElementById('header-title');
-            const addBtn = document.getElementById('add-btn');
-
-            const btnHome = document.getElementById('btn-home');
-            const btnStats = document.getElementById('btn-stats');
-            const btnSet = document.getElementById('btn-set');
-
-            // Reset all
-            main.classList.add('hidden');
-            stats.classList.add('hidden');
-            set.classList.add('hidden');
-            
-            [btnHome, btnStats, btnSet].forEach(btn => {
-                btn.classList.remove('text-blue-600');
-                btn.classList.add('text-gray-400');
-            });
-
-            if (v === 'home') {
-                main.classList.remove('hidden');
-                headerTitle.innerText = "本月支出";
-                btnHome.classList.add('text-blue-600'); btnHome.classList.remove('text-gray-400');
-                addBtn.classList.remove('hidden');
-                renderExpenses(window.allExpenses); // Re-render for safety
-            } else if (v === 'stats') {
-                stats.classList.remove('hidden');
-                headerTitle.innerText = "統計報表";
-                btnStats.classList.add('text-blue-600'); btnStats.classList.remove('text-gray-400');
-                addBtn.classList.add('hidden');
-                renderStats(); // Ensure fresh render
-            } else {
-                set.classList.remove('hidden');
-                headerTitle.innerText = "設定";
-                btnSet.classList.add('text-blue-600'); btnSet.classList.remove('text-gray-400');
-                addBtn.classList.add('hidden');
-            }
-        };
-
-        // --- Data Fetching and Rendering ---
-
-        const expenseList = document.getElementById('expense-list');
-        const totalAmountDisplay = document.getElementById('total-amount');
-
-        /**
-         * Renders the list of expenses on the home screen.
-         * @param {Array} expenses 
-         */
-        function renderExpenses(expenses) {
-            expenseList.innerHTML = '';
-            
-            if (expenses.length === 0) {
-                expenseList.innerHTML = '<li class="text-center text-gray-500 py-8">本月尚無支出記錄 🎉</li>';
-                totalAmountDisplay.innerText = '0';
-                return;
-            }
-
-            let total = 0;
-
-            // Sort by date descending (most recent first) - IMPORTANT: Do this in JS to avoid index errors in Firestore
-            expenses.sort((a, b) => b.date.toDate().getTime() - a.date.toDate().getTime());
-
-            expenses.forEach(expense => {
-                const categoryData = getCategoryByName(expense.category);
-                const li = document.createElement('li');
-                
-                // Using expense.id to pass the document ID to the delete button
-                li.className = 'flex items-center justify-between p-3 bg-white rounded-xl shadow-md mb-2 hover:shadow-lg transition duration-200';
-                li.innerHTML = `
-                    <div class="flex items-center space-x-4 flex-grow min-w-0">
-                        <!-- Icon (Category) -->
-                        <div class="text-xl flex-shrink-0">${categoryData.icon}</div>
-                        <!-- Details (Category and Note) -->
-                        <div class="flex-grow min-w-0">
-                            <p class="font-semibold text-gray-800 truncate">${expense.category}</p>
-                            <p class="text-sm text-gray-500 truncate">${expense.note || '無備註'}</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center space-x-3 flex-shrink-0">
-                        <!-- Amount and Date -->
-                        <div class="flex flex-col items-end">
-                            <p class="font-bold text-lg text-red-500">-${formatAmount(expense.amount)}</p>
-                            <p class="text-xs text-gray-400">${formatDate(expense.date)}</p>
-                        </div>
-                        <!-- 垃圾桶圖示 (Delete Button) -->
-                        <button data-id="${expense.id}" class="delete-btn p-2 text-gray-400 hover:text-red-500 active:bg-red-50 transition duration-150 rounded-full flex-shrink-0" aria-label="刪除記錄">
-                            <i class="fa-solid fa-trash-can text-lg"></i>
-                        </button>
-                    </div>
-                `;
-                expenseList.appendChild(li);
-                total += expense.amount;
-            });
-
-            totalAmountDisplay.innerText = formatAmount(total);
-            window.totalMonthlyExpense = total; // Update global total for stats
-        }
-
-        /**
-         * Renders the statistics view.
-         */
-        function renderStats() {
-            const statsContainer = document.getElementById('stats-container');
-            statsContainer.innerHTML = '';
-
-            if (window.allExpenses.length === 0) {
-                statsContainer.innerHTML = '<p class="text-center text-gray-500 py-8">沒有足夠的數據來生成報表。</p>';
-                return;
-            }
-
-            // 1. Calculate total by category
-            const categoryTotals = {};
-            window.allExpenses.forEach(expense => {
-                categoryTotals[expense.category] = (categoryTotals[expense.category] || 0) + expense.amount;
-            });
-
-            // 2. Sort categories by total amount descending
-            const sortedCategories = Object.entries(categoryTotals)
-                .map(([category, total]) => ({ category, total }))
-                .sort((a, b) => b.total - a.total);
-
-            // 3. Render the list
-            sortedCategories.forEach(item => {
-                const categoryData = getCategoryByName(item.category);
-                const percentage = (item.total / window.totalMonthlyExpense) * 100;
-
-                const statItem = document.createElement('div');
-                statItem.className = 'mb-4 p-4 bg-white rounded-xl shadow-md';
-                statItem.innerHTML = `
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="flex items-center space-x-2">
-                            <div class="text-xl ${categoryData.text}">${categoryData.icon}</div>
-                            <span class="font-semibold text-gray-800">${item.category}</span>
-                        </div>
-                        <div class="text-right">
-                            <p class="font-bold text-red-500">-${formatAmount(item.total)}</p>
-                            <p class="text-sm text-gray-500">${percentage.toFixed(1)}%</p>
-                        </div>
-                    </div>
-                    <div class="w-full bg-gray-200 rounded-full h-2.5">
-                        <div class="stat-bar-fill ${categoryData.text.replace('text', 'bg')} h-2.5 rounded-full" style="width: 0%" data-percent="${percentage.toFixed(0)}"></div>
-                    </div>
-                `;
-                statsContainer.appendChild(statItem);
-            });
-
-            // Animate bars after rendering
-            setTimeout(() => {
-                document.querySelectorAll('.stat-bar-fill').forEach(bar => {
-                    bar.style.width = bar.dataset.percent + '%';
-                });
-            }, 50); // Small delay to ensure rendering is done
-        }
-
-        // --- CRUD Operations ---
-
-        /**
-         * Adds a new expense record to Firestore.
-         * @param {number} amount
-         * @param {string} category
-         * @param {string} note
-         * @param {Date} date
-         */
-        async function addExpense(amount, category, note, date) {
-            if (!db || !userId) {
-                showAlert('錯誤', '未初始化資料庫或未登入', 'red');
-                return;
-            }
-
-            showLoading(true);
+        // 處理 Canvas 預設認證或匿名認證
+        async function handleInitialAuth() {
             try {
-                // Ensure the path matches the security rules: /artifacts/{appId}/users/{userId}/expenses
-                const expensesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/expenses`);
-                
-                const expenseData = {
-                    amount: amount,
-                    category: category,
-                    note: note,
-                    date: Timestamp.fromDate(date), // Use Firestore Timestamp
-                };
-
-                const docRef = await addDoc(expensesCollectionRef, expenseData);
-                console.log("Document written with ID: ", docRef.id);
-                
-                // No need to manually update UI, onSnapshot handles it
-                showAlert('成功', '支出記錄已新增！', 'green');
-                closeModal(); // Close the modal after successful submission
-
-            } catch (error) {
-                console.error("Error adding document: ", error);
-                showAlert('錯誤', `新增失敗: ${error.message}`, 'red');
-            } finally {
-                showLoading(false);
-            }
-        }
-
-        /**
-         * Deletes an expense record from Firestore.
-         * @param {string} id - The document ID of the expense to delete.
-         */
-        window.deleteExpense = async (id) => {
-            if (!db || !auth.currentUser) {
-                showAlert('錯誤', '未初始化資料庫或未登入', 'red');
-                return;
-            }
-            showLoading(true);
-            try {
-                const userId = auth.currentUser.uid;
-                // Path: /artifacts/{appId}/users/{userId}/expenses/{documentId}
-                const docRef = doc(db, `artifacts/${appId}/users/${userId}/expenses`, id);
-                await deleteDoc(docRef);
-                
-                // onSnapshot will handle the UI update
-                showAlert('成功', '支出記錄已刪除！', 'green');
-            } catch (error) {
-                console.error("Error deleting document: ", error);
-                showAlert('錯誤', `刪除失敗: ${error.message}`, 'red');
-            } finally {
-                showLoading(false);
-            }
-        }
-
-
-        // --- UI Modal Logic ---
-
-        const modalOverlay = document.getElementById('modal-overlay');
-        const closeModal = () => modalOverlay.classList.add('hidden');
-        document.getElementById('modal-close-btn').addEventListener('click', closeModal);
-        document.getElementById('modal-cancel-btn').addEventListener('click', closeModal);
-
-        const openModal = () => {
-            // Reset calculator state
-            document.getElementById('calc-display').value = '0';
-            document.getElementById('note-input').value = '';
-            document.getElementById('date-input').value = new Date().toISOString().substring(0, 10);
-            
-            // Set initial category (e.g., first one)
-            selectedCategory = categories[0];
-            renderCategorySelection();
-
-            modalOverlay.classList.remove('hidden');
-            document.getElementById('calc-display').focus();
-        };
-        document.getElementById('add-btn').addEventListener('click', openModal);
-
-        // --- Calculator Logic ---
-
-        let currentInput = '0';
-        let operator = null;
-        let firstOperand = null;
-        const calcDisplay = document.getElementById('calc-display');
-
-        const updateDisplay = () => {
-            // Display always shows currentInput, capped to a reasonable length
-            calcDisplay.value = currentInput.slice(0, 15);
-        };
-
-        const handleNumber = (number) => {
-            if (currentInput === '0') {
-                currentInput = number;
-            } else {
-                currentInput += number;
-            }
-            updateDisplay();
-        };
-
-        const handleDecimal = () => {
-            // Only allow one decimal point, and only if not currently zero
-            if (!currentInput.includes('.')) {
-                currentInput += '.';
-            }
-            updateDisplay();
-        };
-
-        const handleOperator = (nextOperator) => {
-            const inputValue = parseFloat(currentInput);
-
-            if (firstOperand === null) {
-                firstOperand = inputValue;
-            } else if (operator) {
-                const result = calculate(firstOperand, inputValue, operator);
-                currentInput = String(result);
-                firstOperand = result;
-            }
-
-            operator = nextOperator;
-            currentInput = '0'; // Ready for the next number
-            updateDisplay();
-        };
-
-        const handleEquals = () => {
-            if (operator === null) return;
-
-            const secondOperand = parseFloat(currentInput);
-            if (firstOperand === null) {
-                firstOperand = secondOperand;
-            }
-
-            const result = calculate(firstOperand, secondOperand, operator);
-
-            currentInput = String(result);
-            firstOperand = null;
-            operator = null;
-            updateDisplay();
-        };
-
-        const calculate = (num1, num2, op) => {
-            switch (op) {
-                case '+': return num1 + num2;
-                case '-': return num1 - num2;
-                case '*': return num1 * num2;
-                case '/': 
-                    if (num2 === 0) {
-                        showAlert('錯誤', '除數不能為零！', 'red');
-                        return num1;
-                    }
-                    return num1 / num2;
-                default: return num2;
-            }
-        };
-
-        const handleClear = () => {
-            currentInput = '0';
-            firstOperand = null;
-            operator = null;
-            updateDisplay();
-        };
-
-        const handleBackspace = () => {
-            if (currentInput.length > 1) {
-                currentInput = currentInput.slice(0, -1);
-            } else {
-                currentInput = '0';
-            }
-            updateDisplay();
-        };
-
-        // Event listeners for calculator buttons
-        document.querySelectorAll('.calc-btn').forEach(button => {
-            button.addEventListener('click', (e) => {
-                const value = e.target.closest('button').dataset.value;
-                if (!value) return;
-
-                if (value >= '0' && value <= '9') {
-                    handleNumber(value);
-                } else if (value === '.') {
-                    handleDecimal();
-                } else if (['+', '-', '*', '/'].includes(value)) {
-                    handleOperator(value);
-                } else if (value === '=') {
-                    handleEquals();
-                } else if (value === 'C') {
-                    handleClear();
-                } else if (value === 'backspace') {
-                    handleBackspace();
-                }
-            });
-        });
-
-        // --- Category Selection Logic ---
-
-        const categoryContainer = document.getElementById('category-container');
-
-        const renderCategorySelection = () => {
-            categoryContainer.innerHTML = '';
-            categories.forEach(cat => {
-                const isSelected = cat.name === selectedCategory.name;
-                const button = document.createElement('button');
-                button.dataset.category = cat.name;
-                button.className = `flex flex-col items-center justify-center p-2 rounded-xl transition duration-150 transform hover:scale-105 active:scale-95 ${isSelected ? cat.color + ' border-2 border-blue-500' : 'bg-gray-100'}`;
-                button.innerHTML = `
-                    <div class="text-3xl mb-1">${cat.icon}</div>
-                    <span class="text-xs font-medium text-gray-700">${cat.name}</span>
-                `;
-                button.addEventListener('click', () => {
-                    selectedCategory = cat;
-                    renderCategorySelection(); // Re-render to show selection change
-                });
-                categoryContainer.appendChild(button);
-            });
-        };
-
-        // Submit Button Logic
-        document.getElementById('modal-submit-btn').addEventListener('click', () => {
-            handleEquals(); // Finalize calculation
-            
-            const amount = parseFloat(calcDisplay.value);
-            const category = selectedCategory.name;
-            const note = document.getElementById('note-input').value.trim();
-            const dateStr = document.getElementById('date-input').value;
-            const date = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone issues
-
-            if (isNaN(amount) || amount <= 0) {
-                showAlert('輸入錯誤', '請輸入有效的金額。', 'orange');
-                return;
-            }
-
-            addExpense(amount, category, note, date);
-        });
-        
-        // --- Initialization and Auth ---
-
-        window.onload = async () => {
-            // Init Firebase
-            if (Object.keys(firebaseConfig).length > 0) {
-                try {
-                    const app = initializeApp(firebaseConfig);
-                    db = getFirestore(app);
-                    auth = getAuth(app);
-                } catch (e) {
-                    console.error("Firebase Initialization Error:", e);
-                    showAlert('錯誤', 'Firebase初始化失敗', 'red');
-                    return;
-                }
-            } else {
-                console.error("Firebase config is missing.");
-                showAlert('錯誤', 'Firebase設定遺失', 'red');
-                return;
-            }
-
-            // Authentication
-            try {
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
                 } else {
                     await signInAnonymously(auth);
                 }
             } catch (error) {
-                console.error("Authentication Error:", error);
-                showAlert('錯誤', '登入失敗', 'red');
+                console.error("初始認證失敗:", error);
+                await signInAnonymously(auth); // 確保始終有一個用戶
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userId = user.uid;
+                console.log("用戶已登入, UID:", userId);
+                if (!isAuthReady) {
+                    isAuthReady = true;
+                    // 只有在首次認證完成時才切換到主頁面
+                    state.currentPage = 'quickLog';
+                    loadInitialData();
+                }
+            } else {
+                console.log("用戶已登出或未認證");
+                userId = null;
+                isAuthReady = true;
+                state.currentPage = 'login';
+                renderApp();
+            }
+        });
+
+        if (typeof __initial_auth_token !== 'undefined') {
+             handleInitialAuth(); // 啟動初始認證流程
+        }
+
+
+        // --- Firestore 數據操作 ---
+
+        // 載入初始數據 (設定和支出)
+        function loadInitialData() {
+            if (!isAuthReady || !userId) return;
+
+            // 1. 監聽設定 (分類和支付方式)
+            const settingsRef = doc(db, dbPath('settings'), 'config');
+            onSnapshot(settingsRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    state.categories = data.categories || [];
+                    state.paymentMethods = data.paymentMethods || ['現金', '信用卡'];
+                } else {
+                    // 首次使用，設定預設值
+                    console.log("初始化使用者設定...");
+                    setDoc(settingsRef, {
+                        categories: [
+                            { id: crypto.randomUUID(), name: '餐飲', budget: 10000, color: '#FF6B6B' },
+                            { id: crypto.randomUUID(), name: '交通', budget: 5000, color: '#4ECDC4' },
+                            { id: crypto.randomUUID(), name: '娛樂', budget: 3000, color: '#4F5D75' },
+                        ],
+                        paymentMethods: ['現金', '信用卡', '其他'],
+                        lastUpdated: serverTimestamp()
+                    });
+                }
+                renderApp();
+            }, (error) => console.error("監聽設定失敗:", error));
+
+            // 2. 監聽支出紀錄 (按日期排序)
+            const expensesQuery = query(collection(db, dbPath('expenses')), orderBy('date', 'desc'));
+            onSnapshot(expensesQuery, (snapshot) => {
+                state.expenses = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    date: doc.data().date.toDate(), // 將 Timestamp 轉換為 Date 物件
+                    amount: parseFloat(doc.data().amount) // 確保金額是數字
+                }));
+                renderApp();
+            }, (error) => console.error("監聽支出紀錄失敗:", error));
+        }
+
+        // 儲存或更新支出紀錄
+        async function saveExpense(expenseData, recordId = null) {
+            try {
+                // 轉換 Date 物件為 Firestore Timestamp
+                expenseData.date = new Date(expenseData.date);
+                expenseData.amount = parseFloat(expenseData.amount);
+
+                if (recordId) {
+                    const docRef = doc(db, dbPath('expenses'), recordId);
+                    await updateDoc(docRef, expenseData);
+                    showToast('紀錄已更新！', 'success');
+                } else {
+                    await setDoc(doc(collection(db, dbPath('expenses'))), {
+                        ...expenseData,
+                        createdAt: serverTimestamp()
+                    });
+                    showToast('紀錄已儲存！', 'success');
+                }
+
+                // 檢查預算並發出提醒
+                checkBudgetAlert(expenseData.categoryId, expenseData.date);
+
+                state.isEditing = false;
+                state.editRecord = null;
+                navigate('quickLog'); // 返回 QuickLog 或 History 頁面
+            } catch (e) {
+                console.error("儲存/更新紀錄失敗:", e);
+                showToast('儲存/更新紀錄失敗!', 'error');
+            }
+        }
+
+        // 刪除支出紀錄
+        async function deleteExpense(recordId) {
+            try {
+                await deleteDoc(doc(db, dbPath('expenses'), recordId));
+                showToast('紀錄已刪除', 'success');
+            } catch (e) {
+                console.error("刪除紀錄失敗:", e);
+                showToast('刪除紀錄失敗', 'error');
+            }
+        }
+
+        // 更新分類設定
+        async function updateCategories(newCategories) {
+            try {
+                const settingsRef = doc(db, dbPath('settings'), 'config');
+                await updateDoc(settingsRef, {
+                    categories: newCategories,
+                    lastUpdated: serverTimestamp()
+                });
+                showToast('分類預算已更新！', 'success');
+            } catch (e) {
+                console.error("更新分類失敗:", e);
+                showToast('更新分類失敗!', 'error');
+            }
+        }
+
+        // --- 核心應用邏輯 ---
+
+        // 計算指定分類和月份的總支出
+        function calculateMonthlySpending(categoryId, date) {
+            const targetMonth = date.getFullYear() * 12 + date.getMonth();
+            const total = state.expenses
+                .filter(exp => {
+                    const expMonth = exp.date.getFullYear() * 12 + exp.date.getMonth();
+                    return exp.categoryId === categoryId && expMonth === targetMonth;
+                })
+                .reduce((sum, exp) => sum + exp.amount, 0);
+            return total;
+        }
+
+        // 檢查預算並彈出提醒
+        function checkBudgetAlert(categoryId, date) {
+            const category = state.categories.find(c => c.id === categoryId);
+            if (!category || !category.budget || category.budget <= 0) return;
+
+            const totalSpent = calculateMonthlySpending(categoryId, date);
+            const budget = category.budget;
+            const percentage = (totalSpent / budget) * 100;
+
+            let message = '';
+            let title = '預算提醒';
+
+            if (percentage >= 100) {
+                message = `您已超出 ${category.name} 分類本月的預算 ${budget} 元！當月已花費 ${totalSpent.toFixed(0)} 元。`;
+                title = '🚨 預算超支警告';
+            } else if (percentage >= 90) {
+                message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0)} 元，已達到預算的 90%！`;
+                title = '⚠️ 預算接近警告';
+            } else if (percentage >= 70) {
+                message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0)} 元，已達到預算的 70%。`;
+            } else if (percentage >= 50) {
+                message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0)} 元，已達到預算的 50%。`;
             }
 
-            // Auth State Change Listener
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    userId = user.uid;
-                    document.getElementById('user-id').innerText = `使用者ID: ${userId}`;
-                    
-                    // 修正：使用自定義的 getStartOfMonth 和 getEndOfMonth 函式
-                    const startOfMonthDate = getStartOfMonth();
-                    const endOfMonthDate = getEndOfMonth();
+            if (message) {
+                showModal(title, message, null, true);
+            }
+        }
 
-                    // Firestore Query Setup (Current Month)
-                    const expensesCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/expenses`);
-                    // 修正：移除 orderBy('date', 'desc') 以避免 Firestore 索引錯誤，改在 renderExpenses 中進行排序
-                    const q = query(
-                        expensesCollectionRef,
-                        where('date', '>=', Timestamp.fromDate(startOfMonthDate)),
-                        where('date', '<=', Timestamp.fromDate(endOfMonthDate))
-                    );
-                    
-                    // Real-time listener
-                    onSnapshot(q, (snapshot) => {
-                        window.allExpenses = snapshot.docs.map(doc => ({
-                            id: doc.id,
-                            ...doc.data()
-                        }));
-                        console.log("Expenses updated from Firestore:", window.allExpenses);
+        // --- UI 組件及渲染 ---
+
+        function navigate(page) {
+            state.currentPage = page;
+            renderApp();
+        }
+
+        // 模態框 (替代 alert/confirm)
+        function showModal(title, content, onConfirm = null, isAlert = false) {
+            const modalHtml = `
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                    <div class="bg-white p-6 rounded-xl shadow-2xl w-11/12 max-w-sm">
+                        <h3 class="text-xl font-bold mb-4">${title}</h3>
+                        <p class="mb-6">${content}</p>
+                        <div class="flex justify-end space-x-3">
+                            ${!isAlert ? `<button id="modal-cancel" class="px-4 py-2 text-gray-600 bg-gray-200 rounded-lg">取消</button>` : ''}
+                            <button id="modal-confirm" class="px-4 py-2 text-white rounded-lg ${onConfirm ? 'btn-primary' : 'bg-gray-500'}">
+                                ${onConfirm ? '確認' : '關閉'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            modalContainer.innerHTML = modalHtml;
+
+            const closeModal = () => modalContainer.innerHTML = '';
+
+            document.getElementById('modal-confirm').onclick = () => {
+                if (onConfirm) onConfirm();
+                closeModal();
+            };
+            if (!isAlert) {
+                document.getElementById('modal-cancel').onclick = closeModal;
+            }
+        }
+
+        // 簡易 Toast 提示
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `fixed bottom-20 left-1/2 transform -translate-x-1/2 p-3 rounded-xl text-white shadow-lg transition-opacity duration-300 z-50 ${type === 'success' ? 'bg-green-500' : 'bg-red-500'}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.addEventListener('transitionend', () => toast.remove());
+            }, 3000);
+        }
+
+        // 底部導航欄
+        function renderNavBar() {
+            if (state.currentPage === 'login') return '';
+            const navItems = [
+                { id: 'quickLog', icon: '📝', label: '快速記帳' },
+                { id: 'history', icon: '📜', label: '紀錄' },
+                { id: 'summary', icon: '📈', label: '總覽' },
+                { id: 'settings', icon: '⚙️', label: '設定' },
+            ];
+
+            return `
+                <nav class="fixed bottom-0 w-full max-w-[420px] bg-white border-t border-gray-200 shadow-xl z-10">
+                    <div class="flex justify-around h-16">
+                        ${navItems.map(item => `
+                            <button onclick="window.navigate('${item.id}')"
+                                class="flex flex-col items-center justify-center text-xs w-1/4 pt-1 ${state.currentPage === item.id ? 'text-green-600 font-bold' : 'text-gray-500'}">
+                                <span class="text-xl">${item.icon}</span>
+                                <span>${item.label}</span>
+                            </button>
+                        `).join('')}
+                    </div>
+                </nav>
+            `;
+        }
+
+        // 計算機模態框
+        function renderCalculatorModal() {
+            if (!state.calculator.isVisible) return '';
+
+            const calDisplay = state.calculator.currentInput || '0';
+            const buttons = [
+                '7', '8', '9', 'C',
+                '4', '5', '6', '+',
+                '1', '2', '3', '-',
+                '0', '.', '=', 'OK'
+            ];
+
+            return `
+                <div class="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-50">
+                    <div class="bg-white p-4 rounded-xl shadow-2xl w-11/12 max-w-xs">
+                        <div class="text-right text-3xl font-light mb-3 p-2 bg-gray-100 rounded-lg">${calDisplay}</div>
+                        <div class="grid grid-cols-4 gap-2">
+                            ${buttons.map(btn => `
+                                <button data-value="${btn}" class="calc-btn p-3 rounded-lg text-lg font-bold
+                                    ${btn === 'OK' ? 'col-span-1 bg-green-500 text-white' : btn === 'C' ? 'bg-red-200 text-red-700' : btn === '=' ? 'bg-blue-200 text-blue-700' : 'bg-gray-100 hover:bg-gray-200'}">
+                                    ${btn}
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 渲染登入/註冊頁面
+        function renderLoginPage() {
+            return `
+                <div class="p-6 pt-16 flex flex-col items-center">
+                    <h1 class="text-4xl font-bold mb-10 text-green-600">Zen 記帳本</h1>
+                    <div class="w-full max-w-sm">
+                        <input id="email-input" type="email" placeholder="電子郵件" class="w-full p-3 mb-4 border border-gray-300 rounded-xl focus:border-green-500 focus:ring focus:ring-green-200" required>
+                        <input id="password-input" type="password" placeholder="密碼" class="w-full p-3 mb-6 border border-gray-300 rounded-xl focus:border-green-500 focus:ring focus:ring-green-200" required>
+                        <button id="login-btn" class="w-full p-3 btn-primary font-bold rounded-xl mb-3">登入</button>
+                        <button id="signup-btn" class="w-full p-3 bg-gray-200 text-gray-700 font-bold rounded-xl">註冊新帳號</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 渲染快速記帳/新增紀錄頁面
+        function renderQuickLogPage() {
+            const today = new Date().toISOString().split('T')[0];
+            const isEditing = state.isEditing;
+            const record = state.editRecord || {};
+            const initialAmount = record.amount || 0;
+
+            const categoryOptions = state.categories.map(c =>
+                `<option value="${c.id}" ${record.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`
+            ).join('');
+
+            const paymentOptions = state.paymentMethods.map(p =>
+                `<option value="${p}" ${record.paymentMethod === p ? 'selected' : ''}>${p}</option>`
+            ).join('');
+
+            // 頂部總覽
+            const totalThisMonth = calculateMonthlySpending(null, new Date());
+            let currentMonth = new Date().toLocaleString('zh-TW', { month: 'long', year: 'numeric' });
+            let budgetStatus = '無預算資訊';
+            let totalBudget = state.categories.reduce((sum, c) => sum + (c.budget || 0), 0);
+            let budgetSpentPercent = totalBudget > 0 ? (totalThisMonth / totalBudget) * 100 : 0;
+            if (totalBudget > 0) {
+                budgetStatus = `總預算已花費 ${budgetSpentPercent.toFixed(0)}%`;
+            }
+
+            return `
+                <div class="p-5 pb-20">
+                    <!-- 頂部總覽 -->
+                    <div class="bg-green-600 text-white p-4 rounded-xl mb-6 shadow-md">
+                        <h2 class="text-lg font-light">${currentMonth} 總支出</h2>
+                        <p class="text-4xl font-bold mb-1">NT$ ${totalThisMonth.toLocaleString('zh-TW')}</p>
+                        <p class="text-sm">${budgetStatus}</p>
+                    </div>
+
+                    <!-- 記帳表單 -->
+                    <h2 class="text-2xl font-bold mb-4 text-gray-800">${isEditing ? '編輯紀錄' : '快速記帳'}</h2>
+                    <form id="expense-form" class="space-y-4">
+                        <input type="hidden" id="record-id" value="${record.id || ''}">
                         
-                        // Only re-render the current view
-                        const currentView = document.getElementById('main-view').classList.contains('hidden') ? 
-                                           (document.getElementById('stats-view').classList.contains('hidden') ? 'set' : 'stats') : 'home';
-                        view(currentView); 
-                    }, (error) => {
-                        console.error("Firestore Snapshot Error:", error);
-                        showAlert('錯誤', `數據同步失敗: ${error.message}`, 'red');
-                    });
-                    
-                } else {
-                    userId = null;
-                    document.getElementById('user-id').innerText = '未登入';
-                    window.allExpenses = [];
-                    renderExpenses([]);
-                }
-            });
+                        <!-- 日期 -->
+                        <div>
+                            <label for="date" class="text-sm text-gray-500 block mb-1">日期</label>
+                            <input type="date" id="date" name="date" value="${record.date ? record.date.toISOString().split('T')[0] : today}" class="w-full p-3 border border-gray-300 rounded-xl" required>
+                        </div>
+                        
+                        <!-- 金額 (可點擊輸入) -->
+                        <div>
+                            <label for="amount" class="text-sm text-gray-500 block mb-1">金額</label>
+                            <div class="relative">
+                                <input type="number" id="amount" name="amount" value="${initialAmount}" 
+                                    class="w-full p-3 text-2xl font-bold text-accent border border-gray-300 rounded-xl pr-12" required
+                                    min="0.01" step="0.01" readonly>
+                                <button type="button" id="open-calculator-btn" class="absolute inset-y-0 right-0 p-3 flex items-center justify-center text-gray-500">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                                      <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25m-4.5 9V5.25A2.25 2.25 0 0 0 10.5 3h-1.5a2.25 2.25 0 0 0-2.25 2.25v7.5a2.25 2.25 0 0 0 2.25 2.25h.75m4.5-9V5.25A2.25 2.25 0 0 0 16.5 3h-1.5a2.25 2.25 0 0 0-2.25 2.25v7.5a2.25 2.25 0 0 0 2.25 2.25h.75m4.5-9V5.25A2.25 2.25 0 0 0 21 3h-1.5a2.25 2.25 0 0 0-2.25 2.25v7.5a2.25 2.25 0 0 0 2.25 2.25h.75M9 15.75V18a2.25 2.25 0 0 0 2.25 2.25h1.5A2.25 2.25 0 0 0 15 18v-2.25" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
 
-            // Initial view setup (will trigger data fetch once auth completes)
-            view('home');
-            
-            // Event Delegation for Delete Button (Home View)
-            expenseList.addEventListener('click', (e) => {
-                const deleteBtn = e.target.closest('.delete-btn');
-                if (deleteBtn) {
-                    const expenseId = deleteBtn.dataset.id;
-                    showConfirm(
-                        '確認刪除',
-                        '您確定要刪除這筆支出記錄嗎？此操作無法撤銷。',
-                        () => window.deleteExpense(expenseId)
-                    );
-                }
-            });
-            
-            // Set today's date in the modal input
-            document.getElementById('date-input').value = new Date().toISOString().substring(0, 10);
-        };
-    </script>
-</head>
-<body class="bg-gray-50 min-h-screen">
-    <!-- App Container -->
-    <div id="app-container" class="mx-auto flex flex-col shadow-lg bg-gray-50">
+                        <!-- 分類 -->
+                        <div>
+                            <label for="category-id" class="text-sm text-gray-500 block mb-1">分類</label>
+                            <select id="category-id" name="categoryId" class="w-full p-3 border border-gray-300 rounded-xl" required>
+                                <option value="">--- 選擇分類 ---</option>
+                                ${categoryOptions}
+                            </select>
+                        </div>
+                        
+                        <!-- 支付方式 -->
+                        <div>
+                            <label for="payment-method" class="text-sm text-gray-500 block mb-1">支付方式</label>
+                            <select id="payment-method" name="paymentMethod" class="w-full p-3 border border-gray-300 rounded-xl" required>
+                                ${paymentOptions}
+                            </select>
+                        </div>
+                        
+                        <!-- 備註 -->
+                        <div>
+                            <label for="note" class="text-sm text-gray-500 block mb-1">備註 (非必填)</label>
+                            <input type="text" id="note" name="note" value="${record.note || ''}" placeholder="例如：晚餐費用、車票" class="w-full p-3 border border-gray-300 rounded-xl">
+                        </div>
+                        
+                        <!-- 儲存按鈕 -->
+                        <button type="submit" class="w-full p-4 btn-primary font-bold rounded-xl text-lg shadow-md mt-6">
+                            ${isEditing ? '更新紀錄' : '儲存紀錄'}
+                        </button>
+                        
+                        ${isEditing ? `
+                            <button type="button" onclick="window.cancelEdit()" class="w-full p-3 bg-gray-200 text-gray-700 font-bold rounded-xl mt-2">
+                                取消編輯
+                            </button>
+                        ` : ''}
+                    </form>
+                </div>
+            `;
+        }
         
-        <!-- Header -->
-        <header class="p-4 bg-white shadow-sm sticky top-0 z-10">
-            <div class="flex justify-between items-center">
-                <h1 id="header-title" class="text-xl font-bold text-gray-800">本月支出</h1>
-                <button id="add-btn" class="bg-blue-600 text-white w-10 h-10 rounded-full shadow-lg hover:bg-blue-700 transition duration-150 flex items-center justify-center active:scale-95">
-                    <i class="fa-solid fa-plus text-lg"></i>
-                </button>
-            </div>
-        </header>
+        // 渲染歷史紀錄頁面
+        function renderHistoryPage() {
+            if (state.expenses.length === 0) {
+                return `<div class="p-6 text-center pt-20 text-gray-500">尚無支出紀錄。</div>`;
+            }
 
-        <!-- Main Content Area -->
-        <main class="flex-grow scrollable-content p-4">
+            const getCategory = (id) => state.categories.find(c => c.id === id) || { name: '未知分類', color: '#ccc' };
 
-            <!-- Home View -->
-            <div id="main-view">
-                <!-- Total Display Card -->
-                <div class="bg-red-500 text-white p-6 rounded-2xl shadow-xl mb-4">
-                    <p class="text-sm font-light opacity-80">本月總支出 (NTD)</p>
-                    <p id="total-amount" class="text-4xl font-bold mt-1">0</p>
+            // 按日期分組
+            const groupedExpenses = state.expenses.reduce((acc, exp) => {
+                const dateStr = exp.date.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+                if (!acc[dateStr]) {
+                    acc[dateStr] = [];
+                }
+                acc[dateStr].push(exp);
+                return acc;
+            }, {});
+            
+            const historyListHtml = Object.keys(groupedExpenses).map(dateStr => {
+                const dailyTotal = groupedExpenses[dateStr].reduce((sum, exp) => sum + exp.amount, 0);
+                const recordsHtml = groupedExpenses[dateStr].map(exp => {
+                    const category = getCategory(exp.categoryId);
+                    return `
+                        <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
+                            <div class="flex-1 min-w-0">
+                                <p class="font-semibold text-gray-800 flex items-center">
+                                    <span class="inline-block w-2 h-2 mr-2 rounded-full" style="background-color: ${category.color};"></span>
+                                    ${category.name}
+                                </p>
+                                <p class="text-sm text-gray-500 truncate">${exp.note || '無備註'}</p>
+                            </div>
+                            <div class="text-right ml-4">
+                                <p class="font-bold text-accent">- NT$ ${exp.amount.toLocaleString('zh-TW')}</p>
+                                <p class="text-xs text-gray-400">${exp.paymentMethod}</p>
+                            </div>
+                            <div class="flex space-x-2 ml-4">
+                                <button onclick="window.startEdit('${exp.id}')" class="text-blue-500 hover:text-blue-700 p-1 rounded-full bg-blue-50">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                                </button>
+                                <button onclick="window.confirmDelete('${exp.id}')" class="text-red-500 hover:text-red-700 p-1 rounded-full bg-red-50">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.86 11.14A2 2 0 0116.14 20H7.86a2 2 0 01-1.99-1.86L5 7m5 4v6m4-6v6m-4-10h4m-8 0h12" /></svg>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="mb-6 p-4 bg-white rounded-xl shadow-sm border border-gray-100">
+                        <div class="flex justify-between items-center pb-2 border-b-2 border-gray-200">
+                            <h3 class="text-lg font-bold text-gray-700">${dateStr}</h3>
+                            <p class="font-bold text-accent">- NT$ ${dailyTotal.toLocaleString('zh-TW')}</p>
+                        </div>
+                        <div class="divide-y divide-gray-100">
+                            ${recordsHtml}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <div class="p-5 pb-20">
+                    <h1 class="text-3xl font-bold mb-6 text-gray-800">歷史紀錄</h1>
+                    <div id="history-list">${historyListHtml}</div>
                 </div>
+            `;
+        }
 
-                <!-- Expense List -->
-                <h2 class="text-lg font-semibold text-gray-700 mb-3">詳細記錄</h2>
-                <ul id="expense-list" class="space-y-3">
-                    <!-- Expense items will be rendered here -->
-                    <li class="text-center text-gray-500 py-8">載入中...</li>
-                </ul>
-            </div>
+        // 渲染總覽頁面
+        function renderSummaryPage() {
+            // 總覽邏輯
+            const monthlyTotals = state.expenses.reduce((acc, exp) => {
+                const monthKey = exp.date.getFullYear() + '-' + (exp.date.getMonth() + 1).toString().padStart(2, '0');
+                acc[monthKey] = (acc[monthKey] || 0) + exp.amount;
+                return acc;
+            }, {});
 
-            <!-- Stats View -->
-            <div id="stats-view" class="hidden">
-                <h2 class="text-xl font-bold text-gray-800 mb-4">支出分類分析</h2>
-                <div id="stats-container">
-                    <!-- Stats content will be rendered here -->
-                    <p class="text-center text-gray-500 py-8">載入中...</p>
+            const monthlyHtml = Object.keys(monthlyTotals).sort().reverse().map(monthKey => `
+                <div class="flex justify-between items-center p-4 bg-white rounded-xl shadow-sm mb-3">
+                    <span class="text-lg font-semibold text-gray-700">${monthKey}</span>
+                    <span class="text-xl font-bold text-accent">- NT$ ${monthlyTotals[monthKey].toLocaleString('zh-TW')}</span>
                 </div>
-            </div>
+            `).join('');
 
-            <!-- Settings View -->
-            <div id="set-view" class="hidden p-4 bg-white rounded-xl shadow-md">
-                <h2 class="text-xl font-bold text-gray-800 mb-4 border-b pb-2">帳戶資訊</h2>
-                <p class="text-sm text-gray-600" id="user-id">使用者ID: 載入中...</p>
-                <p class="mt-4 text-sm text-gray-500">此ID用於標識您的資料。所有記錄都會儲存在您帳戶下的私有空間。</p>
-            </div>
+            // 年度總支出
+            const yearlyTotals = state.expenses.reduce((acc, exp) => {
+                const yearKey = exp.date.getFullYear().toString();
+                acc[yearKey] = (acc[yearKey] || 0) + exp.amount;
+                return acc;
+            }, {});
 
-        </main>
-
-        <!-- Bottom Navigation Bar -->
-        <nav class="p-3 bg-white border-t border-gray-200 sticky bottom-0 z-10">
-            <div class="flex justify-around items-center">
-                <button id="btn-home" onclick="view('home')" class="flex flex-col items-center p-2 text-blue-600">
-                    <i class="fa-solid fa-house text-xl"></i>
-                    <span class="text-xs mt-1">首頁</span>
-                </button>
-                <button id="btn-stats" onclick="view('stats')" class="flex flex-col items-center p-2 text-gray-400">
-                    <i class="fa-solid fa-chart-pie text-xl"></i>
-                    <span class="text-xs mt-1">統計</span>
-                </button>
-                <button id="btn-set" onclick="view('set')" class="flex flex-col items-center p-2 text-gray-400">
-                    <i class="fa-solid fa-gear text-xl"></i>
-                    <span class="text-xs mt-1">設定</span>
-                </button>
-            </div>
-        </nav>
-    </div>
-
-    <!-- Modal Overlay (For Add Expense) -->
-    <div id="modal-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50 transition-opacity duration-300">
-        <div class="bg-white w-full max-w-lg rounded-t-3xl shadow-2xl transform transition-transform duration-300 translate-y-0 max-h-[85vh] flex flex-col">
-            <!-- Modal Header -->
-            <div class="p-4 border-b flex justify-between items-center sticky top-0 bg-white rounded-t-3xl">
-                <h3 class="text-xl font-bold text-gray-800">新增支出</h3>
-                <button id="modal-close-btn" class="text-gray-400 hover:text-gray-600 p-2 rounded-full active:bg-gray-100">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
-
-            <!-- Modal Body (Scrollable Content) -->
-            <div class="p-4 space-y-4 scrollable-content flex-grow">
-                
-                <!-- Amount Display (Calculator Input) -->
-                <div class="relative mb-4">
-                    <input type="text" id="calc-display" value="0" readonly 
-                           class="w-full text-5xl font-light text-right p-3 border-b-2 border-blue-500 focus:outline-none focus:ring-0 rounded-lg text-gray-800"
-                           placeholder="0">
-                    <span class="absolute right-3 bottom-4 text-gray-500 text-2xl">NTD</span>
+            const yearlyHtml = Object.keys(yearlyTotals).sort().reverse().map(yearKey => `
+                <div class="flex justify-between items-center p-4 bg-white rounded-xl shadow-sm mb-3 border-l-4 border-blue-500">
+                    <span class="text-xl font-bold text-blue-600">${yearKey} 總支出</span>
+                    <span class="text-2xl font-extrabold text-accent">- NT$ ${yearlyTotals[yearKey].toLocaleString('zh-TW')}</span>
                 </div>
+            `).join('');
 
-                <!-- Category Selection -->
-                <h4 class="text-lg font-semibold text-gray-700 mb-2">選擇類別</h4>
-                <div id="category-container" class="grid grid-cols-3 gap-3">
-                    <!-- Categories will be rendered here by JS -->
-                </div>
-                
-                <!-- Date Picker -->
-                <h4 class="text-lg font-semibold text-gray-700 pt-2 mb-2">日期</h4>
-                <input type="date" id="date-input" class="w-full p-3 border border-gray-300 rounded-xl focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-opacity-50 transition duration-150">
 
-                <!-- Note Input -->
-                <h4 class="text-lg font-semibold text-gray-700 pt-2 mb-2">備註 (選填)</h4>
-                <input type="text" id="note-input" placeholder="例如：晚餐、電影票..." class="w-full p-3 border border-gray-300 rounded-xl focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-opacity-50 transition duration-150">
-
-                <!-- Calculator Grid -->
-                <div class="grid grid-cols-4 gap-2 pt-4">
-                    <!-- Row 1 -->
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-200 hover:bg-gray-300" data-value="C">C</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-200 hover:bg-gray-300" data-value="/">/</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-200 hover:bg-gray-300" data-value="*">*</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-200 hover:bg-gray-300" data-value="backspace"><i class="fa-solid fa-delete-left"></i></button>
-
-                    <!-- Row 2 -->
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-100 hover:bg-gray-200" data-value="7">7</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-100 hover:bg-gray-200" data-value="8">8</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-100 hover:bg-gray-200" data-value="9">9</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-200 hover:bg-gray-300 row-span-2" data-value="-">-</button>
-
-                    <!-- Row 3 -->
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-100 hover:bg-gray-200" data-value="4">4</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-100 hover:bg-gray-200" data-value="5">5</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-100 hover:bg-gray-200" data-value="6">6</button>
+            return `
+                <div class="p-5 pb-20">
+                    <h1 class="text-3xl font-bold mb-6 text-gray-800">支出總覽</h1>
                     
-                    <!-- Row 4 -->
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-100 hover:bg-gray-200" data-value="1">1</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-100 hover:bg-gray-200" data-value="2">2</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-100 hover:bg-gray-200" data-value="3">3</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-200 hover:bg-gray-300 row-span-2" data-value="+">+</button>
+                    <h2 class="text-2xl font-bold mb-4 text-blue-600">年度總結</h2>
+                    <div class="space-y-3 mb-8">${yearlyHtml || '<p class="text-gray-500">尚無年度數據</p>'}</div>
+
+                    <h2 class="text-2xl font-bold mb-4 text-gray-800">每月總結</h2>
+                    <div class="space-y-3">${monthlyHtml || '<p class="text-gray-500">尚無月份數據</p>'}</div>
+                </div>
+            `;
+        }
+
+        // 渲染設定/分類預算頁面
+        function renderSettingsPage() {
+            const categoryListHtml = state.categories.map(c => {
+                const totalSpent = calculateMonthlySpending(c.id, new Date());
+                const budget = c.budget || 0;
+                const percent = budget > 0 ? (totalSpent / budget) * 100 : 0;
+                const progressBarWidth = Math.min(percent, 100);
+                const progressBarColor = percent > 90 ? 'bg-red-500' : percent > 70 ? 'bg-orange-500' : percent > 50 ? 'bg-yellow-500' : 'bg-green-500';
+
+                return `
+                    <div class="bg-white p-4 rounded-xl shadow-sm mb-3 border border-gray-100" data-category-id="${c.id}">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex-1">
+                                <p class="text-lg font-bold flex items-center">
+                                    <span class="inline-block w-3 h-3 mr-2 rounded-full" style="background-color: ${c.color || '#ccc'};"></span>
+                                    ${c.name}
+                                </p>
+                                <p class="text-sm text-gray-500">本月花費: NT$ ${totalSpent.toLocaleString('zh-TW')} / 預算: NT$ ${budget.toLocaleString('zh-TW')}</p>
+                            </div>
+                            <div class="flex space-x-2 ml-4">
+                                <button onclick="window.editCategory('${c.id}')" class="text-blue-500 hover:text-blue-700 p-1">編輯</button>
+                                <button onclick="window.confirmDeleteCategory('${c.id}')" class="text-red-500 hover:text-red-700 p-1">刪除</button>
+                            </div>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div class="${progressBarColor} h-2.5 rounded-full" style="width: ${progressBarWidth}%;"></div>
+                        </div>
+                        <p class="text-xs text-right mt-1 text-gray-500">${percent.toFixed(1)}%</p>
+                    </div>
+                `;
+            }).join('');
+
+            // 支付方式列表
+            const paymentMethodsHtml = state.paymentMethods.map(p => `
+                <span class="inline-block bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full mr-2 mb-2">${p}</span>
+            `).join('');
+
+            return `
+                <div class="p-5 pb-20">
+                    <h1 class="text-3xl font-bold mb-6 text-gray-800">設定與預算</h1>
+
+                    <button id="logout-btn" class="float-right bg-red-100 text-red-600 px-3 py-1 text-sm rounded-xl font-bold">登出</button>
+                    <h2 class="text-2xl font-bold mb-4 text-green-600">支出分類與預算</h2>
+                    <div id="category-list" class="mb-8">
+                        ${categoryListHtml}
+                    </div>
                     
-                    <!-- Row 5 -->
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-100 hover:bg-gray-200 col-span-2" data-value="0">0</button>
-                    <button class="calc-btn text-gray-800 text-xl p-3 rounded-xl bg-gray-100 hover:bg-gray-200" data-value=".">.</button>
-                </div>
-            </div>
-
-            <!-- Modal Footer (Submit Button) -->
-            <div class="p-4 flex space-x-3 border-t sticky bottom-0 bg-white">
-                <button id="modal-cancel-btn" class="w-1/3 p-3 bg-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-300 transition duration-150 active:scale-95">取消</button>
-                <button id="modal-submit-btn" class="w-2/3 p-3 bg-blue-600 text-white font-bold text-lg rounded-xl shadow-lg hover:bg-blue-700 transition duration-150 active:scale-95" data-value="=">
-                    儲存記錄
-                </button>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Loading Overlay -->
-    <div id="loading-overlay" class="hidden fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-        <div class="bg-white p-5 rounded-xl shadow-2xl flex items-center space-x-3">
-            <i class="fa-solid fa-spinner fa-spin text-xl text-blue-500"></i>
-            <span class="text-gray-700 font-medium">處理中...</span>
-        </div>
-    </div>
-
-    <!-- Custom Alert Modal -->
-    <div id="alert-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white p-6 rounded-xl shadow-2xl w-11/12 max-w-sm transform transition-all duration-300 scale-100">
-            <div class="text-center">
-                <div id="alert-icon" class="text-4xl mb-3">⚠️</div>
-                <h4 id="alert-title" class="text-xl font-bold mb-2">標題</h4>
-                <p id="alert-msg" class="text-gray-600 mb-4">訊息</p>
-                <button onclick="document.getElementById('alert-modal').classList.add('hidden')" 
-                        class="w-full p-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition duration-150">
-                    確定
-                </button>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Custom Confirmation Modal (New for Delete) -->
-    <div id="confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white p-6 rounded-xl shadow-2xl w-11/12 max-w-sm transform transition-all duration-300 scale-100">
-            <div class="text-center">
-                <div class="text-4xl mb-3 text-red-500">🚨</div>
-                <h4 id="confirm-title" class="text-xl font-bold mb-2">確認刪除</h4>
-                <p id="confirm-msg" class="text-gray-600 mb-4">您確定要刪除這筆支出記錄嗎？此操作無法撤銷。</p>
-                <div class="flex space-x-3 mt-4">
-                    <button onclick="document.getElementById('confirm-modal').classList.add('hidden')"
-                            class="w-1/2 p-3 bg-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-300 transition duration-150">
-                        取消
+                    <button onclick="window.openAddCategoryModal()" class="w-full p-3 bg-blue-100 text-blue-600 font-bold rounded-xl mb-8">
+                        + 新增/編輯分類
                     </button>
-                    <button id="confirm-ok-btn"
-                            class="w-1/2 p-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition duration-150">
-                        確認刪除
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
+                    <h2 class="text-2xl font-bold mb-4 text-gray-800">支付方式 (待實作編輯)</h2>
+                    <div class="mb-6">
+                        ${paymentMethodsHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        // 渲染整個應用程式
+        function renderApp() {
+            let contentHtml = '';
+            const page = state.currentPage;
+
+            if (!isAuthReady) {
+                 contentHtml = `<div class="p-10 text-center text-gray-500 pt-20">載入中...</div>`;
+            } else if (page === 'login' || !userId) {
+                contentHtml = renderLoginPage();
+            } else {
+                switch (page) {
+                    case 'quickLog':
+                        contentHtml = renderQuickLogPage();
+                        break;
+                    case 'history':
+                        contentHtml = renderHistoryPage();
+                        break;
+                    case 'summary':
+                        contentHtml = renderSummaryPage();
+                        break;
+                    case 'settings':
+                        contentHtml = renderSettingsPage();
+                        break;
+                    default:
+                        contentHtml = renderQuickLogPage();
+                }
+            }
+
+            appElement.innerHTML = `
+                <div class="relative w-full h-full">
+                    ${contentHtml}
+                    ${renderNavBar()}
+                </div>
+            `;
+            modalContainer.innerHTML = renderCalculatorModal();
+
+            // 重新附加事件監聽器
+            attachEventListeners(page);
+        }
+
+
+        // --- 事件監聽器與處理函數 ---
+
+        function attachEventListeners(page) {
+            // 登入/註冊事件
+            if (page === 'login') {
+                document.getElementById('login-btn')?.addEventListener('click', handleLogin);
+                document.getElementById('signup-btn')?.addEventListener('click', handleSignUp);
+            }
+            
+            // QuickLog/Form 事件
+            if (page === 'quickLog') {
+                const form = document.getElementById('expense-form');
+                if (form) {
+                    form.addEventListener('submit', handleExpenseFormSubmit);
+                    // 點擊金額欄位或按鈕開啟計算機
+                    document.getElementById('amount')?.addEventListener('click', () => openCalculator('amount'));
+                    document.getElementById('open-calculator-btn')?.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        openCalculator('amount');
+                    });
+                }
+            }
+
+            // 設定頁面事件
+            if (page === 'settings') {
+                document.getElementById('logout-btn')?.addEventListener('click', handleLogout);
+            }
+
+            // 計算機事件
+            if (state.calculator.isVisible) {
+                document.querySelectorAll('.calc-btn').forEach(button => {
+                    button.addEventListener('click', handleCalculatorInput);
+                });
+            }
+        }
+
+        // 登入處理
+        async function handleLogin() {
+            const email = document.getElementById('email-input').value;
+            const password = document.getElementById('password-input').value;
+            if (!email || !password) return showToast('請輸入郵件和密碼', 'error');
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                showToast('登入成功！', 'success');
+            } catch (error) {
+                console.error("登入失敗:", error);
+                showToast('登入失敗: ' + error.message, 'error');
+            }
+        }
+
+        // 註冊處理
+        async function handleSignUp() {
+            const email = document.getElementById('email-input').value;
+            const password = document.getElementById('password-input').value;
+            if (password.length < 6) return showToast('密碼長度需至少為 6 位', 'error');
+
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                showToast('註冊成功！已自動登入。', 'success');
+            } catch (error) {
+                console.error("註冊失敗:", error);
+                showToast('註冊失敗: ' + error.message, 'error');
+            }
+        }
+
+        // 登出處理
+        async function handleLogout() {
+            try {
+                await signOut(auth);
+                showToast('登出成功', 'success');
+                navigate('login');
+            } catch (error) {
+                console.error("登出失敗:", error);
+                showToast('登出失敗: ' + error.message, 'error');
+            }
+        }
+
+
+        // 表單提交處理
+        function handleExpenseFormSubmit(e) {
+            e.preventDefault();
+            const form = e.target;
+            const recordId = form.elements['record-id'].value;
+            const amountVal = form.elements['amount'].value;
+
+            if (parseFloat(amountVal) <= 0) {
+                 return showToast('金額必須大於 0', 'error');
+            }
+            
+            const expenseData = {
+                date: form.elements['date'].value,
+                amount: amountVal,
+                categoryId: form.elements['categoryId'].value,
+                paymentMethod: form.elements['paymentMethod'].value,
+                note: form.elements['note'].value.trim(),
+            };
+
+            saveExpense(expenseData, recordId || null);
+            // 重置表單
+            form.reset();
+            form.elements['date'].value = new Date().toISOString().split('T')[0]; // 保持日期為今天
+        }
+
+        // 歷史紀錄 - 啟動編輯模式
+        window.startEdit = (recordId) => {
+            const record = state.expenses.find(e => e.id === recordId);
+            if (record) {
+                state.isEditing = true;
+                state.editRecord = {
+                    ...record,
+                    // 確保日期是 ISO 格式字串，以便填入 input[type="date"]
+                    date: record.date.toISOString().split('T')[0] 
+                };
+                navigate('quickLog');
+            }
+        };
+
+        // 歷史紀錄 - 取消編輯模式
+        window.cancelEdit = () => {
+            state.isEditing = false;
+            state.editRecord = null;
+            navigate('quickLog');
+        };
+
+        // 歷史紀錄 - 確認刪除
+        window.confirmDelete = (recordId) => {
+            showModal(
+                '確認刪除',
+                '您確定要刪除這筆支出紀錄嗎？',
+                () => deleteExpense(recordId)
+            );
+        };
+        
+        // 分類 - 開啟新增/編輯模態框
+        window.openAddCategoryModal = (category = null) => {
+            const isEditing = !!category;
+            const id = category ? category.id : '';
+            const name = category ? category.name : '';
+            const budget = category ? category.budget : 0;
+            const color = category ? category.color : '#4CAF50';
+
+            const modalContent = `
+                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                    <form id="category-form" class="bg-white p-6 rounded-xl shadow-2xl w-11/12 max-w-sm">
+                        <h3 class="text-xl font-bold mb-4">${isEditing ? '編輯分類' : '新增分類'}</h3>
+                        <input type="hidden" id="cat-id" value="${id}">
+                        
+                        <label class="block mb-2 text-sm text-gray-600">分類名稱</label>
+                        <input type="text" id="cat-name" value="${name}" placeholder="例如：餐飲" class="w-full p-3 mb-4 border border-gray-300 rounded-xl" required>
+
+                        <label class="block mb-2 text-sm text-gray-600">每月預算 (NT$)</label>
+                        <input type="number" id="cat-budget" value="${budget}" min="0" step="100" class="w-full p-3 mb-4 border border-gray-300 rounded-xl" required>
+
+                        <label class="block mb-2 text-sm text-gray-600">代表顏色</label>
+                        <input type="color" id="cat-color" value="${color}" class="w-full h-10 p-1 mb-6 border border-gray-300 rounded-xl">
+
+                        <div class="flex justify-end space-x-3">
+                            <button type="button" onclick="document.getElementById('modal-container').innerHTML=''" class="px-4 py-2 text-gray-600 bg-gray-200 rounded-lg">取消</button>
+                            <button type="submit" class="px-4 py-2 text-white btn-primary rounded-lg">${isEditing ? '儲存變更' : '新增'}</button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            modalContainer.innerHTML = modalContent;
+            
+            // 附加表單提交事件
+            document.getElementById('category-form').addEventListener('submit', handleCategoryFormSubmit);
+        };
+        
+        // 分類 - 編輯
+        window.editCategory = (categoryId) => {
+            const category = state.categories.find(c => c.id === categoryId);
+            if (category) {
+                window.openAddCategoryModal(category);
+            }
+        };
+
+        // 分類 - 表單提交處理
+        function handleCategoryFormSubmit(e) {
+            e.preventDefault();
+            const form = e.target;
+            const id = form.elements['cat-id'].value || crypto.randomUUID();
+            const name = form.elements['cat-name'].value;
+            const budget = parseInt(form.elements['cat-budget'].value, 10);
+            const color = form.elements['cat-color'].value;
+            
+            let newCategories = [...state.categories];
+            const existingIndex = newCategories.findIndex(c => c.id === id);
+
+            const newCategoryData = { id, name, budget, color };
+
+            if (existingIndex !== -1) {
+                newCategories[existingIndex] = newCategoryData; // 更新
+            } else {
+                newCategories.push(newCategoryData); // 新增
+            }
+            
+            updateCategories(newCategories);
+            document.getElementById('modal-container').innerHTML = ''; // 關閉模態框
+        }
+
+        // 分類 - 確認刪除
+        window.confirmDeleteCategory = (categoryId) => {
+            showModal(
+                '確認刪除分類',
+                '刪除分類不會刪除相關紀錄，但紀錄將顯示為「未知分類」。確定要刪除嗎？',
+                () => {
+                    const newCategories = state.categories.filter(c => c.id !== categoryId);
+                    updateCategories(newCategories);
+                }
+            );
+        };
+
+        // --- 計算機邏輯 ---
+
+        function openCalculator(targetId) {
+            const currentAmount = document.getElementById(targetId)?.value || '0';
+            state.calculator.currentInput = currentAmount === '0' ? '' : currentAmount;
+            state.calculator.targetInputId = targetId;
+            state.calculator.isVisible = true;
+            renderApp();
+        }
+        
+        function handleCalculatorInput(e) {
+            e.preventDefault();
+            const value = e.target.getAttribute('data-value');
+            let current = state.calculator.currentInput;
+
+            switch (value) {
+                case 'C':
+                    current = '';
+                    break;
+                case '=':
+                    try {
+                        // 使用 eval 進行計算，並將結果四捨五入到小數點後兩位
+                        current = eval(current.replace('×', '*').replace('÷', '/')).toFixed(2).replace(/\.00$/, '');
+                    } catch (e) {
+                        current = '錯誤';
+                    }
+                    break;
+                case 'OK':
+                    // 1. 執行最終計算 (如果還沒按 =)
+                    if (current.match(/[+\-*/]/)) {
+                        try {
+                           current = eval(current.replace('×', '*').replace('÷', '/')).toFixed(2).replace(/\.00$/, '');
+                        } catch (e) {
+                           current = '0';
+                        }
+                    } else if (current === '' || current === '錯誤') {
+                        current = '0';
+                    }
+                    
+                    // 2. 傳輸結果到表單
+                    const targetInput = document.getElementById(state.calculator.targetInputId);
+                    if (targetInput) {
+                        targetInput.value = parseFloat(current).toFixed(2);
+                    }
+                    
+                    // 3. 關閉計算機
+                    state.calculator.isVisible = false;
+                    state.calculator.currentInput = '';
+                    break;
+                case '+':
+                case '-':
+                case '×':
+                case '÷':
+                    // 避免連續操作符
+                    const lastChar = current.slice(-1);
+                    if (['+', '-', '×', '÷'].includes(lastChar)) {
+                        current = current.slice(0, -1) + value;
+                    } else if (current !== '' && current !== '錯誤') {
+                        current += value;
+                    }
+                    break;
+                case '.':
+                    // 檢查當前數字中是否已有小數點
+                    const parts = current.split(/[+\-*/]/);
+                    const lastPart = parts[parts.length - 1];
+                    if (!lastPart.includes('.')) {
+                        current += value;
+                    }
+                    break;
+                default: // 數字
+                    if (current === '錯誤') current = '';
+                    current += value;
+                    break;
+            }
+
+            state.calculator.currentInput = current;
+            renderApp();
+        }
+
+        // 將 navigate 函數暴露給全域 window
+        window.navigate = navigate;
+        
+        // 首次渲染應用程式
+        // 由於 onAuthStateChanged 會在初始化後觸發，我們只需確保初始認證邏輯啟動即可。
+        // 如果沒有啟動認證流程，則先渲染登入頁面
+        if (typeof __initial_auth_token === 'undefined') {
+            renderApp();
+        }
+    </script>
 </body>
 </html>
