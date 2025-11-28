@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zen 記帳本</title>
+    <title>YM帳簿</title>
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入 Zen Maru Gothic 字體 -->
@@ -29,7 +29,7 @@
             background-color: #45a049;
         }
         .text-accent {
-            color: #142445; /* 支出色 */
+            color: #FF6B6B; /* 支出紅 */
         }
         .nav-icon {
             display: flex;
@@ -470,19 +470,14 @@
 
             const totalThisMonth = calculateMonthlySpending(null, new Date());
             let currentMonth = new Date().toLocaleString('zh-TW', { month: 'long', year: 'numeric' });
-            let budgetStatus = '無預算資訊';
-            let totalBudget = state.categories.reduce((sum, c) => sum + (c.budget || 0), 0);
-            let budgetSpentPercent = totalBudget > 0 ? (totalThisMonth / totalBudget) * 100 : 0;
-            if (totalBudget > 0) {
-                budgetStatus = `總預算已花費 ${budgetSpentPercent.toFixed(1)}%`;
-            }
+            
+            // 已移除預算百分比計算
 
             return `
                 <div class="p-5 pb-20">
                     <div class="bg-green-600 text-white p-4 rounded-xl mb-6 shadow-md">
                         <h2 class="text-lg font-light">${currentMonth} 總支出</h2>
                         <p class="text-4xl font-bold mb-1">NT$ ${totalThisMonth.toLocaleString('zh-TW')}</p>
-                        <p class="text-sm">${budgetStatus}</p>
                     </div>
 
                     <h2 class="text-2xl font-bold mb-4 text-gray-800">${isEditing ? '編輯紀錄' : '快速記帳'}</h2>
@@ -868,10 +863,8 @@
             const record = state.expenses.find(e => e.id === recordId);
             if (record) {
                 state.isEditing = true;
-                state.editRecord = {
-                    ...record,
-                    date: record.date.toISOString().split('T')[0] 
-                };
+                // 修正：保持 date 為 Date 物件，避免 renderQuickLogPage 中 toISOString() 錯誤
+                state.editRecord = { ...record };
                 navigate('quickLog');
             }
         };
