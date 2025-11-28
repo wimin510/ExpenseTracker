@@ -21,15 +21,15 @@
         }
         /* 自定義顏色 */
         .btn-primary {
-            background-color: #22304d; /* 總支出塊顏色 */
+            background-color: #4CAF50; /* 綠色 */
             color: white;
             transition: background-color 0.2s;
         }
         .btn-primary:hover {
-            background-color: #22304d;
+            background-color: #45a049;
         }
         .text-accent {
-            color: #1C2C3B; /* 支出顏色 */
+            color: #FF6B6B; /* 支出紅 */
         }
         .nav-icon {
             display: flex;
@@ -46,11 +46,6 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            background: conic-gradient(
-                #4CAF50 0%, 
-                #4CAF50 0%, 
-                #f0f0f0 0%
-            );
         }
         .circular-progress::before {
             content: '';
@@ -84,7 +79,7 @@
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // 設定 Firebase 日誌級別
-        setLogLevel('Debug');
+        setLogLevel('Silent'); 
 
         // --- 全域變數和 Firebase 初始化 ---
         const appElement = document.getElementById('app');
@@ -124,8 +119,6 @@
         };
 
         // --- 認證流程 ---
-
-        // 處理 Canvas 預設認證或匿名認證
         async function handleInitialAuth() {
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -135,7 +128,7 @@
                 }
             } catch (error) {
                 console.error("初始認證失敗:", error);
-                await signInAnonymously(auth); // 確保始終有一個用戶
+                await signInAnonymously(auth); 
             }
         }
 
@@ -145,7 +138,6 @@
                 console.log("用戶已登入, UID:", userId);
                 if (!isAuthReady) {
                     isAuthReady = true;
-                    // 只有在首次認證完成時才切換到主頁面
                     state.currentPage = 'quickLog';
                     loadInitialData();
                 }
@@ -159,17 +151,15 @@
         });
 
         if (typeof __initial_auth_token !== 'undefined') {
-             handleInitialAuth(); // 啟動初始認證流程
+             handleInitialAuth(); 
         }
-
 
         // --- Firestore 數據操作 ---
 
-        // 載入初始數據 (設定和支出)
         function loadInitialData() {
             if (!isAuthReady || !userId) return;
 
-            // 1. 監聽設定 (分類和支付方式)
+            // 1. 監聽設定
             const settingsRef = doc(db, dbPath('settings'), 'config');
             onSnapshot(settingsRef, (docSnap) => {
                 if (docSnap.exists()) {
@@ -177,8 +167,6 @@
                     state.categories = data.categories || [];
                     state.paymentMethods = data.paymentMethods || ['現金', '信用卡'];
                 } else {
-                    // 首次使用，設定預設值
-                    console.log("初始化使用者設定...");
                     setDoc(settingsRef, {
                         categories: [
                             { id: crypto.randomUUID(), name: '餐飲', budget: 10000, color: '#FF6B6B' },
@@ -192,54 +180,54 @@
                 renderApp();
             }, (error) => console.error("監聽設定失敗:", error));
 
-            // 2. 監聽支出紀錄 (按日期排序)
+            // 2. 監聽支出紀錄
             const expensesQuery = query(collection(db, dbPath('expenses')), orderBy('date', 'desc'));
             onSnapshot(expensesQuery, (snapshot) => {
                 state.expenses = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data(),
-                    date: doc.data().date.toDate(), // 將 Timestamp 轉換為 Date 物件
-                    amount: parseFloat(doc.data().amount) // 確保金額是數字
+                    date: doc.data().date.toDate(),
+                    amount: parseFloat(doc.data().amount)
                 }));
                 renderApp();
             }, (error) => console.error("監聽支出紀錄失敗:", error));
         }
 
-        // 儲存或更新支出紀錄
         async function saveExpense(expenseData, recordId = null) {
             try {
-                // 轉換 Date 物件為 Firestore Timestamp
                 const recordDate = new Date(expenseData.date);
                 const amount = parseFloat(expenseData.amount);
+                let targetId = recordId;
 
                 if (recordId) {
                     const docRef = doc(db, dbPath('expenses'), recordId);
                     await updateDoc(docRef, { ...expenseData, date: recordDate, amount });
                     showToast('紀錄已更新！', 'success');
                 } else {
+                    const newDocRef = doc(collection(db, dbPath('expenses')));
+                    targetId = newDocRef.id;
                     const newRecord = {
                         ...expenseData,
                         date: recordDate,
                         amount,
                         createdAt: serverTimestamp()
                     };
-                    await setDoc(doc(collection(db, dbPath('expenses'))), newRecord);
+                    await setDoc(newDocRef, newRecord);
                     showToast('紀錄已儲存！', 'success');
-                    
-                    // 新增記錄後檢查預算
-                    checkBudgetAlert(newRecord.categoryId, newRecord.date);
                 }
+
+                // 檢查預算
+                checkBudgetAlert(expenseData.categoryId, recordDate, amount, targetId);
 
                 state.isEditing = false;
                 state.editRecord = null;
-                navigate('quickLog'); // 返回 QuickLog 頁面
+                navigate('quickLog');
             } catch (e) {
                 console.error("儲存/更新紀錄失敗:", e);
                 showToast('儲存/更新紀錄失敗!', 'error');
             }
         }
 
-        // 刪除支出紀錄
         async function deleteExpense(recordId) {
             try {
                 await deleteDoc(doc(db, dbPath('expenses'), recordId));
@@ -250,7 +238,6 @@
             }
         }
 
-        // 更新分類設定
         async function updateCategories(newCategories) {
             try {
                 const settingsRef = doc(db, dbPath('settings'), 'config');
@@ -267,52 +254,119 @@
 
         // --- 核心應用邏輯 ---
 
-        /**
-         * 計算指定分類和月份的總支出
-         * @param {string | null} categoryId - 分類 ID，如果為 null 則計算當月總支出
-         * @param {Date} date - 用於確定月份的日期物件
-         * @returns {number} 總支出金額
-         */
         function calculateMonthlySpending(categoryId, date) {
             const targetMonth = date.getFullYear() * 12 + date.getMonth();
             const total = state.expenses
                 .filter(exp => {
                     const expMonth = exp.date.getFullYear() * 12 + exp.date.getMonth();
-                    // 修正 #2: 如果 categoryId 為 null，則計算所有類別
                     return expMonth === targetMonth && (categoryId === null || exp.categoryId === categoryId);
                 })
                 .reduce((sum, exp) => sum + exp.amount, 0);
             return total;
         }
 
-        // 檢查預算並彈出提醒 (修正 #4)
-        function checkBudgetAlert(categoryId, date) {
+        // 預算檢查
+        function checkBudgetAlert(categoryId, date, newAmount, recordId) {
             const category = state.categories.find(c => c.id === categoryId);
             if (!category || !category.budget || category.budget <= 0) return;
 
-            const totalSpent = calculateMonthlySpending(categoryId, date);
+            const targetMonth = date.getFullYear() * 12 + date.getMonth();
+            
+            // 1. 計算該月份現有的其他支出 (排除當前這筆 ID)
+            const otherExpensesTotal = state.expenses
+                .filter(exp => {
+                    const expMonth = exp.date.getFullYear() * 12 + exp.date.getMonth();
+                    return exp.id !== recordId && 
+                           expMonth === targetMonth && 
+                           exp.categoryId === categoryId;
+                })
+                .reduce((sum, exp) => sum + exp.amount, 0);
+
+            // 2. 加上當前這筆的金額
+            const totalSpent = otherExpensesTotal + newAmount;
+            
             const budget = category.budget;
             const percentage = (totalSpent / budget) * 100;
 
             let message = '';
             let title = '預算提醒';
 
-            // 只有在超過特定百分比時才提醒
+            const formattedTotal = Math.round(totalSpent).toLocaleString('zh-TW');
+            const formattedBudget = Math.round(budget).toLocaleString('zh-TW');
+
             if (percentage >= 100) {
-                message = `您已超出 ${category.name} 分類本月的預算 ${budget.toLocaleString('zh-TW')} 元！當月已花費 ${totalSpent.toFixed(0).toLocaleString('zh-TW')} 元。`;
+                message = `您已超出 ${category.name} 分類本月的預算 ${formattedBudget} 元！當月已花費 ${formattedTotal} 元。`;
                 title = '🚨 預算超支警告';
             } else if (percentage >= 90) {
-                message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0).toLocaleString('zh-TW')} 元，已達到預算的 90%！請留意。`;
+                message = `您在 ${category.name} 分類本月已花費 ${formattedTotal} 元，已達到預算的 90%！請留意。`;
                 title = '⚠️ 預算接近警告';
             } else if (percentage >= 70) {
-                // 70% 提醒可作為一般通知
-                message = `您在 ${category.name} 分類本月已花費 ${totalSpent.toFixed(0).toLocaleString('zh-TW')} 元，已達到預算的 70%。`;
+                message = `您在 ${category.name} 分類本月已花費 ${formattedTotal} 元，已達到預算的 70%。`;
+            } else if (percentage >= 50) {
+                message = `您在 ${category.name} 分類本月已花費 ${formattedTotal} 元，已達到預算的 50%。`;
             }
 
             if (message) {
-                showModal(title, message, null, true); // isAlert = true
+                showModal(title, message, null, true);
             }
         }
+
+        // --- 標籤功能 ---
+        
+        // 取得指定分類的前 N 個熱門標籤
+        function getTopTags(categoryId) {
+            if (!categoryId) return [];
+            const tagCounts = {};
+            
+            state.expenses
+                .filter(e => e.categoryId === categoryId && e.note)
+                .forEach(e => {
+                    // 匹配 # 開頭，後接非空白字符
+                    const matches = e.note.match(/#\S+/g);
+                    if (matches) {
+                        matches.forEach(tag => {
+                            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                        });
+                    }
+                });
+            
+            // 轉為陣列並排序
+            return Object.entries(tagCounts)
+                .sort((a, b) => b[1] - a[1]) // 按頻率降序
+                .slice(0, 5) // 取前 5 名
+                .map(entry => entry[0]);
+        }
+
+        // 渲染建議標籤
+        function renderSuggestedTags(categoryId) {
+            const tags = getTopTags(categoryId);
+            const container = document.getElementById('suggested-tags');
+            if (!container) return;
+
+            if (tags.length === 0) {
+                container.innerHTML = '<span class="text-xs text-gray-400">此分類尚無常用標籤，試試在備註輸入 #標籤</span>';
+                return;
+            }
+
+            container.innerHTML = tags.map(tag => `
+                <button type="button" 
+                    onclick="window.addTag('${tag}')"
+                    class="bg-blue-50 text-blue-600 text-xs px-3 py-1 rounded-full hover:bg-blue-100 transition-colors border border-blue-100">
+                    ${tag}
+                </button>
+            `).join('');
+        }
+
+        // 加入標籤到備註欄
+        window.addTag = (tag) => {
+            const noteInput = document.getElementById('note');
+            if (noteInput) {
+                // 如果已經包含該標籤，則不重複加入
+                if (!noteInput.value.includes(tag)) {
+                    noteInput.value = (noteInput.value + ' ' + tag).trim();
+                }
+            }
+        };
 
         // --- UI 組件及渲染 ---
 
@@ -321,7 +375,6 @@
             renderApp();
         }
 
-        // 模態框 (替代 alert/confirm)
         function showModal(title, content, onConfirm = null, isAlert = false) {
             const modalHtml = `
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
@@ -346,11 +399,11 @@
                 closeModal();
             };
             if (!isAlert) {
-                document.getElementById('modal-cancel').onclick = closeModal;
+                const cancelBtn = document.getElementById('modal-cancel');
+                if (cancelBtn) cancelBtn.onclick = closeModal;
             }
         }
 
-        // 簡易 Toast 提示
         function showToast(message, type = 'info') {
             const toast = document.createElement('div');
             toast.className = `fixed bottom-20 left-1/2 transform -translate-x-1/2 p-3 rounded-xl text-white shadow-lg transition-opacity duration-300 z-50 ${type === 'success' ? 'bg-green-500' : 'bg-red-500'}`;
@@ -362,7 +415,7 @@
             }, 3000);
         }
 
-        // 底部導航欄
+        // 渲染函數
         function renderNavBar() {
             if (state.currentPage === 'login') return '';
             const navItems = [
@@ -387,7 +440,6 @@
             `;
         }
 
-        // 渲染登入/註冊頁面
         function renderLoginPage() {
             return `
                 <div class="p-6 pt-16 flex flex-col items-center">
@@ -402,12 +454,11 @@
             `;
         }
 
-        // 渲染快速記帳/新增紀錄頁面
         function renderQuickLogPage() {
             const today = new Date().toISOString().split('T')[0];
             const isEditing = state.isEditing;
             const record = state.editRecord || {};
-            const initialAmount = record.amount || ''; // 初始值為空字串，避免顯示 0
+            const initialAmount = record.amount || '';
 
             const categoryOptions = state.categories.map(c =>
                 `<option value="${c.id}" ${record.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`
@@ -417,7 +468,6 @@
                 `<option value="${p}" ${record.paymentMethod === p ? 'selected' : ''}>${p}</option>`
             ).join('');
 
-            // 頂部總覽 (修正 #2: 傳入 null 計算當月總支出)
             const totalThisMonth = calculateMonthlySpending(null, new Date());
             let currentMonth = new Date().toLocaleString('zh-TW', { month: 'long', year: 'numeric' });
             let budgetStatus = '無預算資訊';
@@ -429,25 +479,21 @@
 
             return `
                 <div class="p-5 pb-20">
-                    <!-- 頂部總覽 -->
                     <div class="bg-green-600 text-white p-4 rounded-xl mb-6 shadow-md">
                         <h2 class="text-lg font-light">${currentMonth} 總支出</h2>
                         <p class="text-4xl font-bold mb-1">NT$ ${totalThisMonth.toLocaleString('zh-TW')}</p>
                         <p class="text-sm">${budgetStatus}</p>
                     </div>
 
-                    <!-- 記帳表單 -->
                     <h2 class="text-2xl font-bold mb-4 text-gray-800">${isEditing ? '編輯紀錄' : '快速記帳'}</h2>
                     <form id="expense-form" class="space-y-4">
                         <input type="hidden" id="record-id" value="${record.id || ''}">
                         
-                        <!-- 日期 -->
                         <div>
                             <label for="date" class="text-sm text-gray-500 block mb-1">日期</label>
                             <input type="date" id="date" name="date" value="${record.date ? record.date.toISOString().split('T')[0] : today}" class="w-full p-3 border border-gray-300 rounded-xl" required>
                         </div>
                         
-                        <!-- 金額 (標準輸入框，無計算機) -->
                         <div>
                             <label for="amount" class="text-sm text-gray-500 block mb-1">金額</label>
                             <input type="number" id="amount" name="amount" value="${initialAmount}" 
@@ -455,7 +501,6 @@
                                 min="0.01" step="0.01" placeholder="輸入金額">
                         </div>
 
-                        <!-- 分類 -->
                         <div>
                             <label for="category-id" class="text-sm text-gray-500 block mb-1">分類</label>
                             <select id="category-id" name="categoryId" class="w-full p-3 border border-gray-300 rounded-xl" required>
@@ -463,8 +508,12 @@
                                 ${categoryOptions}
                             </select>
                         </div>
+
+                        <!-- 常用標籤顯示區域 -->
+                        <div id="suggested-tags" class="flex flex-wrap gap-2 min-h-[24px]">
+                            <!-- 標籤會由 JavaScript 動態填入 -->
+                        </div>
                         
-                        <!-- 支付方式 -->
                         <div>
                             <label for="payment-method" class="text-sm text-gray-500 block mb-1">支付方式</label>
                             <select id="payment-method" name="paymentMethod" class="w-full p-3 border border-gray-300 rounded-xl" required>
@@ -472,13 +521,11 @@
                             </select>
                         </div>
                         
-                        <!-- 備註 -->
                         <div>
-                            <label for="note" class="text-sm text-gray-500 block mb-1">備註 (非必填)</label>
-                            <input type="text" id="note" name="note" value="${record.note || ''}" placeholder="例如：晚餐費用、車票" class="w-full p-3 border border-gray-300 rounded-xl">
+                            <label for="note" class="text-sm text-gray-500 block mb-1">備註 (可用 # 建立次分類標籤)</label>
+                            <input type="text" id="note" name="note" value="${record.note || ''}" placeholder="例如：晚餐 #外送 #聚餐" class="w-full p-3 border border-gray-300 rounded-xl">
                         </div>
                         
-                        <!-- 儲存按鈕 -->
                         <button type="submit" class="w-full p-4 btn-primary font-bold rounded-xl text-lg shadow-md mt-6">
                             ${isEditing ? '更新紀錄' : '儲存紀錄'}
                         </button>
@@ -493,7 +540,6 @@
             `;
         }
         
-        // 渲染歷史紀錄頁面
         function renderHistoryPage() {
             if (state.expenses.length === 0) {
                 return `<div class="p-6 text-center pt-20 text-gray-500">尚無支出紀錄。</div>`;
@@ -501,7 +547,6 @@
 
             const getCategory = (id) => state.categories.find(c => c.id === id) || { name: '未知分類', color: '#ccc' };
 
-            // 按日期分組
             const groupedExpenses = state.expenses.reduce((acc, exp) => {
                 const dateStr = exp.date.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
                 if (!acc[dateStr]) {
@@ -515,6 +560,9 @@
                 const dailyTotal = groupedExpenses[dateStr].reduce((sum, exp) => sum + exp.amount, 0);
                 const recordsHtml = groupedExpenses[dateStr].map(exp => {
                     const category = getCategory(exp.categoryId);
+                    // 將備註中的標籤高亮顯示
+                    const noteHtml = (exp.note || '無備註').replace(/(#\S+)/g, '<span class="text-blue-500">$1</span>');
+                    
                     return `
                         <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
                             <div class="flex-1 min-w-0">
@@ -522,7 +570,7 @@
                                     <span class="inline-block w-2 h-2 mr-2 rounded-full" style="background-color: ${category.color};"></span>
                                     ${category.name}
                                 </p>
-                                <p class="text-sm text-gray-500 truncate">${exp.note || '無備註'}</p>
+                                <p class="text-sm text-gray-500 truncate">${noteHtml}</p>
                             </div>
                             <div class="text-right ml-4">
                                 <p class="font-bold text-accent">- NT$ ${exp.amount.toLocaleString('zh-TW')}</p>
@@ -561,27 +609,23 @@
             `;
         }
 
-        // 渲染總覽頁面
         function renderSummaryPage() {
             const today = new Date();
             const currentMonthKey = today.getFullYear() + '-' + (today.getMonth() + 1).toString().padStart(2, '0');
             const totalThisMonth = calculateMonthlySpending(null, today);
             
-            // 修正 #3: 計算各分類支出
             const categorySpending = state.categories.map(cat => {
                 const spent = calculateMonthlySpending(cat.id, today);
                 const budget = cat.budget || 0;
                 const percent = budget > 0 ? (spent / budget) * 100 : 0;
-                
-                // 計算圓形進度條的 conic-gradient 顏色
-                const progressColor = percent >= 100 ? '#FF6B6B' : '#4ECDC4'; // 超支用紅色
+                const progressColor = percent >= 100 ? '#FF6B6B' : '#4ECDC4';
                 const conicGradient = `conic-gradient(${progressColor} ${percent}%, #f0f0f0 ${percent}%)`;
                 
                 return {
                     ...cat,
                     spent,
                     budget,
-                    percent: Math.min(percent, 100), // 進度條不超過 100%
+                    percent: Math.min(percent, 100),
                     displayPercent: percent.toFixed(1),
                     conicGradient
                 };
@@ -603,8 +647,6 @@
                 </div>
             `).join('');
 
-
-            // 每月總結 (非當月)
             const monthlyTotals = state.expenses.reduce((acc, exp) => {
                 const monthKey = exp.date.getFullYear() + '-' + (exp.date.getMonth() + 1).toString().padStart(2, '0');
                 if (monthKey !== currentMonthKey) {
@@ -620,7 +662,6 @@
                 </div>
             `).join('');
 
-            // 年度總支出
             const yearlyTotals = state.expenses.reduce((acc, exp) => {
                 const yearKey = exp.date.getFullYear().toString();
                 acc[yearKey] = (acc[yearKey] || 0) + exp.amount;
@@ -634,33 +675,25 @@
                 </div>
             `).join('');
 
-
             return `
                 <div class="p-5 pb-20">
                     <h1 class="text-3xl font-bold mb-6 text-gray-800">支出總覽</h1>
-                    
-                    <!-- 本月總結 -->
                     <div class="bg-green-100 p-4 rounded-xl mb-8 shadow-md border-2 border-green-500">
                         <h2 class="text-2xl font-bold mb-3 text-green-700">${currentMonthKey} 總結</h2>
                         <p class="text-4xl font-extrabold text-accent mb-4">NT$ ${totalThisMonth.toLocaleString('zh-TW')}</p>
-                        
                         <h3 class="text-lg font-bold mb-2 text-gray-700">分類分佈</h3>
                         <div class="space-y-3">
                             ${categorySummaryHtml || '<p class="text-gray-500 text-sm">本月尚無分類支出數據。</p>'}
                         </div>
                     </div>
-
-
                     <h2 class="text-2xl font-bold mb-4 text-blue-600">年度總結</h2>
                     <div class="space-y-3 mb-8">${yearlyHtml || '<p class="text-gray-500">尚無年度數據</p>'}</div>
-
                     <h2 class="text-2xl font-bold mb-4 text-gray-800">過往月份總結</h2>
                     <div class="space-y-3">${monthlyHtml || '<p class="text-gray-500">尚無月份數據</p>'}</div>
                 </div>
             `;
         }
 
-        // 渲染設定/分類預算頁面
         function renderSettingsPage() {
             const categoryListHtml = state.categories.map(c => {
                 const totalSpent = calculateMonthlySpending(c.id, new Date());
@@ -692,7 +725,6 @@
                 `;
             }).join('');
 
-            // 支付方式列表
             const paymentMethodsHtml = state.paymentMethods.map(p => `
                 <span class="inline-block bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full mr-2 mb-2">${p}</span>
             `).join('');
@@ -700,97 +732,76 @@
             return `
                 <div class="p-5 pb-20">
                     <h1 class="text-3xl font-bold mb-6 text-gray-800">設定與預算</h1>
-
                     <button id="logout-btn" class="float-right bg-red-100 text-red-600 px-3 py-1 text-sm rounded-xl font-bold">登出</button>
                     <h2 class="text-2xl font-bold mb-4 text-green-600">支出分類與預算</h2>
-                    <div id="category-list" class="mb-8">
-                        ${categoryListHtml}
-                    </div>
-                    
-                    <button onclick="window.openAddCategoryModal()" class="w-full p-3 bg-blue-100 text-blue-600 font-bold rounded-xl mb-8">
-                        + 新增/編輯分類
-                    </button>
-
+                    <div id="category-list" class="mb-8">${categoryListHtml}</div>
+                    <button onclick="window.openAddCategoryModal()" class="w-full p-3 bg-blue-100 text-blue-600 font-bold rounded-xl mb-8">+ 新增/編輯分類</button>
                     <h2 class="text-2xl font-bold mb-4 text-gray-800">支付方式 (待實作編輯)</h2>
-                    <div class="mb-6">
-                        ${paymentMethodsHtml}
-                    </div>
+                    <div class="mb-6">${paymentMethodsHtml}</div>
                     <p class="text-sm text-gray-500">用戶ID: ${userId}</p>
                 </div>
             `;
         }
 
-        // 渲染整個應用程式
         function renderApp() {
             let contentHtml = '';
             const page = state.currentPage;
-
             if (!isAuthReady) {
                  contentHtml = `<div class="p-10 text-center text-gray-500 pt-20">載入中...</div>`;
             } else if (page === 'login' || !userId) {
                 contentHtml = renderLoginPage();
             } else {
                 switch (page) {
-                    case 'quickLog':
-                        contentHtml = renderQuickLogPage();
-                        break;
-                    case 'history':
-                        contentHtml = renderHistoryPage();
-                        break;
-                    case 'summary':
-                        contentHtml = renderSummaryPage();
-                        break;
-                    case 'settings':
-                        contentHtml = renderSettingsPage();
-                        break;
-                    default:
-                        contentHtml = renderQuickLogPage();
+                    case 'quickLog': contentHtml = renderQuickLogPage(); break;
+                    case 'history': contentHtml = renderHistoryPage(); break;
+                    case 'summary': contentHtml = renderSummaryPage(); break;
+                    case 'settings': contentHtml = renderSettingsPage(); break;
+                    default: contentHtml = renderQuickLogPage();
                 }
             }
-
             appElement.innerHTML = `
                 <div class="relative w-full h-full">
                     ${contentHtml}
                     ${renderNavBar()}
                 </div>
             `;
-            // 移除計算機相關渲染
             modalContainer.innerHTML = '';
-
-            // 重新附加事件監聽器
             attachEventListeners(page);
         }
-
 
         // --- 事件監聽器與處理函數 ---
 
         function attachEventListeners(page) {
-            // 登入/註冊事件
             if (page === 'login') {
                 document.getElementById('login-btn')?.addEventListener('click', handleLogin);
                 document.getElementById('signup-btn')?.addEventListener('click', handleSignUp);
             }
-            
-            // QuickLog/Form 事件
             if (page === 'quickLog') {
                 const form = document.getElementById('expense-form');
-                if (form) {
-                    form.addEventListener('submit', handleExpenseFormSubmit);
+                if (form) form.addEventListener('submit', handleExpenseFormSubmit);
+                
+                // 監聽分類改變，更新建議標籤
+                const categorySelect = document.getElementById('category-id');
+                if (categorySelect) {
+                    categorySelect.addEventListener('change', (e) => {
+                        renderSuggestedTags(e.target.value);
+                    });
+                    
+                    // 初始化時如果已有選擇分類（例如編輯模式或預設），也要渲染
+                    if (categorySelect.value) {
+                        renderSuggestedTags(categorySelect.value);
+                    }
                 }
             }
-
-            // 設定頁面事件
             if (page === 'settings') {
                 document.getElementById('logout-btn')?.addEventListener('click', handleLogout);
             }
         }
 
-        // 登入處理
         async function handleLogin() {
             const email = document.getElementById('email-input').value;
             const password = document.getElementById('password-input').value;
             if (!email || !password) return showToast('請輸入郵件和密碼', 'error');
-
             try {
                 await signInWithEmailAndPassword(auth, email, password);
                 showToast('登入成功！', 'success');
@@ -800,12 +811,10 @@
             }
         }
 
-        // 註冊處理
         async function handleSignUp() {
             const email = document.getElementById('email-input').value;
             const password = document.getElementById('password-input').value;
             if (password.length < 6) return showToast('密碼長度需至少為 6 位', 'error');
-
             try {
                 await createUserWithEmailAndPassword(auth, email, password);
                 showToast('註冊成功！已自動登入。', 'success');
@@ -815,7 +824,6 @@
             }
         }
 
-        // 登出處理
         async function handleLogout() {
             try {
                 await signOut(auth);
@@ -827,19 +835,15 @@
             }
         }
 
-
-        // 表單提交處理
         function handleExpenseFormSubmit(e) {
             e.preventDefault();
             const form = e.target;
             const recordId = form.elements['record-id'].value;
             const amountVal = form.elements['amount'].value;
-
             const parsedAmount = parseFloat(amountVal);
             if (parsedAmount <= 0 || isNaN(parsedAmount)) {
                  return showToast('金額必須是有效的數字且大於 0', 'error');
             }
-            
             const expenseData = {
                 date: form.elements['date'].value,
                 amount: parsedAmount,
@@ -847,39 +851,37 @@
                 paymentMethod: form.elements['paymentMethod'].value,
                 note: form.elements['note'].value.trim(),
             };
-
             saveExpense(expenseData, recordId || null);
-            
-            // 重置表單 (如果是新增模式)
             if (!recordId) {
                 form.reset();
-                form.elements['date'].value = new Date().toISOString().split('T')[0]; // 保持日期為今天
-                form.elements['amount'].value = ''; // 重置金額
+                form.elements['date'].value = new Date().toISOString().split('T')[0];
+                form.elements['amount'].value = '';
+                // 也要重置標籤建議
+                document.getElementById('suggested-tags').innerHTML = '';
             }
         }
 
-        // 歷史紀錄 - 啟動編輯模式
+        // 全域函數定義 (直接掛載到 window)
+        window.navigate = navigate;
+        
         window.startEdit = (recordId) => {
             const record = state.expenses.find(e => e.id === recordId);
             if (record) {
                 state.isEditing = true;
                 state.editRecord = {
                     ...record,
-                    // 確保日期是 ISO 格式字串，以便填入 input[type="date"]
                     date: record.date.toISOString().split('T')[0] 
                 };
                 navigate('quickLog');
             }
         };
 
-        // 歷史紀錄 - 取消編輯模式
         window.cancelEdit = () => {
             state.isEditing = false;
             state.editRecord = null;
             navigate('quickLog');
         };
 
-        // 歷史紀錄 - 確認刪除
         window.confirmDelete = (recordId) => {
             showModal(
                 '確認刪除',
@@ -888,29 +890,23 @@
             );
         };
         
-        // 分類 - 開啟新增/編輯模態框
         window.openAddCategoryModal = (category = null) => {
             const isEditing = !!category;
             const id = category ? category.id : '';
             const name = category ? category.name : '';
             const budget = category ? category.budget : 0;
             const color = category ? category.color : '#4CAF50';
-
             const modalContent = `
                 <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
                     <form id="category-form" class="bg-white p-6 rounded-xl shadow-2xl w-11/12 max-w-sm">
                         <h3 class="text-xl font-bold mb-4">${isEditing ? '編輯分類' : '新增分類'}</h3>
                         <input type="hidden" id="cat-id" value="${id}">
-                        
                         <label class="block mb-2 text-sm text-gray-600">分類名稱</label>
                         <input type="text" id="cat-name" value="${name}" placeholder="例如：餐飲" class="w-full p-3 mb-4 border border-gray-300 rounded-xl" required>
-
                         <label class="block mb-2 text-sm text-gray-600">每月預算 (NT$)</label>
                         <input type="number" id="cat-budget" value="${budget}" min="0" step="100" class="w-full p-3 mb-4 border border-gray-300 rounded-xl" required>
-
                         <label class="block mb-2 text-sm text-gray-600">代表顏色</label>
                         <input type="color" id="cat-color" value="${color}" class="w-full h-10 p-1 mb-6 border border-gray-300 rounded-xl">
-
                         <div class="flex justify-end space-x-3">
                             <button type="button" onclick="document.getElementById('modal-container').innerHTML=''" class="px-4 py-2 text-gray-600 bg-gray-200 rounded-lg">取消</button>
                             <button type="submit" class="px-4 py-2 text-white btn-primary rounded-lg">${isEditing ? '儲存變更' : '新增'}</button>
@@ -919,20 +915,14 @@
                 </div>
             `;
             modalContainer.innerHTML = modalContent;
-            
-            // 附加表單提交事件
             document.getElementById('category-form').addEventListener('submit', handleCategoryFormSubmit);
         };
         
-        // 分類 - 編輯
         window.editCategory = (categoryId) => {
             const category = state.categories.find(c => c.id === categoryId);
-            if (category) {
-                window.openAddCategoryModal(category);
-            }
+            if (category) window.openAddCategoryModal(category);
         };
 
-        // 分類 - 表單提交處理
         function handleCategoryFormSubmit(e) {
             e.preventDefault();
             const form = e.target;
@@ -940,23 +930,18 @@
             const name = form.elements['cat-name'].value;
             const budget = parseInt(form.elements['cat-budget'].value, 10);
             const color = form.elements['cat-color'].value;
-            
             let newCategories = [...state.categories];
             const existingIndex = newCategories.findIndex(c => c.id === id);
-
             const newCategoryData = { id, name, budget, color };
-
             if (existingIndex !== -1) {
-                newCategories[existingIndex] = newCategoryData; // 更新
+                newCategories[existingIndex] = newCategoryData;
             } else {
-                newCategories.push(newCategoryData); // 新增
+                newCategories.push(newCategoryData);
             }
-            
             updateCategories(newCategories);
-            document.getElementById('modal-container').innerHTML = ''; // 關閉模態框
+            document.getElementById('modal-container').innerHTML = '';
         }
 
-        // 分類 - 確認刪除
         window.confirmDeleteCategory = (categoryId) => {
             showModal(
                 '確認刪除分類',
@@ -967,18 +952,7 @@
                 }
             );
         };
-
-        // 將 navigate, startEdit, cancelEdit, confirmDelete, openAddCategoryModal, editCategory, confirmDeleteCategory 函數暴露給全域 window
-        window.navigate = navigate;
-        window.startEdit = window.startEdit;
-        window.cancelEdit = window.cancelEdit;
-        window.confirmDelete = window.confirmDelete;
-        window.openAddCategoryModal = window.openAddCategoryModal;
-        window.editCategory = window.editCategory;
-        window.confirmDeleteCategory = window.confirmDeleteCategory;
         
-        // 首次渲染應用程式
-        // 由於 onAuthStateChanged 會在初始化後觸發，我們只需確保初始認證邏輯啟動即可。
         if (typeof __initial_auth_token === 'undefined') {
             renderApp();
         }
