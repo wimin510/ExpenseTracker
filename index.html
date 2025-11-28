@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YM帳簿</title>
+    <title>無名帳簿</title>
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- 引入 Zen Maru Gothic 字體 -->
     <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
     <style>
@@ -29,7 +31,10 @@
             background-color: #45a049;
         }
         .text-accent {
-            color: #FF6B6B; /* 支出紅 */
+            color: #192152; /* 支出色 (深藍) */
+        }
+        .bg-accent {
+            background-color: #192152;
         }
         .nav-icon {
             display: flex;
@@ -37,29 +42,9 @@
             align-items: center;
             justify-content: center;
         }
-        /* 圓形進度條基礎樣式 */
-        .circular-progress {
-            position: relative;
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .circular-progress::before {
-            content: '';
-            position: absolute;
-            width: 70px;
-            height: 70px;
-            background-color: white;
-            border-radius: 50%;
-        }
-        .progress-value {
-            position: relative;
-            font-size: 0.8rem;
-            font-weight: bold;
-            color: #4F5D75;
+        /* 進度條動畫 */
+        .progress-bar {
+            transition: width 0.5s ease-in-out;
         }
     </style>
 </head>
@@ -75,11 +60,11 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, setDoc, getDoc, updateDoc, deleteDoc, query, where, onSnapshot, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, collection, setDoc, getDoc, updateDoc, deleteDoc, query, where, onSnapshot, orderBy, serverTimestamp, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // 設定 Firebase 日誌級別
-        setLogLevel('Silent'); 
+        setLogLevel('Silent');
 
         // --- 全域變數和 Firebase 初始化 ---
         const appElement = document.getElementById('app');
@@ -116,6 +101,8 @@
             paymentMethods: ['現金', '信用卡'],
             isEditing: false,
             editRecord: null,
+            summaryMode: 'month', // 'month' or 'year'
+            chartInstance: null // 用於儲存 Chart.js 實例
         };
 
         // --- 認證流程 ---
@@ -138,6 +125,7 @@
                 console.log("用戶已登入, UID:", userId);
                 if (!isAuthReady) {
                     isAuthReady = true;
+                    // 只有在首次認證完成時才切換到主頁面
                     state.currentPage = 'quickLog';
                     loadInitialData();
                 }
@@ -159,7 +147,7 @@
         function loadInitialData() {
             if (!isAuthReady || !userId) return;
 
-            // 1. 監聽設定
+            // 1. 監聽設定 (分類和支付方式)
             const settingsRef = doc(db, dbPath('settings'), 'config');
             onSnapshot(settingsRef, (docSnap) => {
                 if (docSnap.exists()) {
@@ -167,6 +155,8 @@
                     state.categories = data.categories || [];
                     state.paymentMethods = data.paymentMethods || ['現金', '信用卡'];
                 } else {
+                    // 首次使用，設定預設值
+                    console.log("初始化使用者設定...");
                     setDoc(settingsRef, {
                         categories: [
                             { id: crypto.randomUUID(), name: '餐飲', budget: 10000, color: '#FF6B6B' },
@@ -180,19 +170,20 @@
                 renderApp();
             }, (error) => console.error("監聽設定失敗:", error));
 
-            // 2. 監聽支出紀錄
+            // 2. 監聽支出紀錄 (按日期排序)
             const expensesQuery = query(collection(db, dbPath('expenses')), orderBy('date', 'desc'));
             onSnapshot(expensesQuery, (snapshot) => {
                 state.expenses = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data(),
-                    date: doc.data().date.toDate(),
-                    amount: parseFloat(doc.data().amount)
+                    date: doc.data().date.toDate(), // 將 Timestamp 轉換為 Date 物件
+                    amount: parseFloat(doc.data().amount) // 確保金額是數字
                 }));
                 renderApp();
             }, (error) => console.error("監聽支出紀錄失敗:", error));
         }
 
+        // 儲存或更新支出紀錄
         async function saveExpense(expenseData, recordId = null) {
             try {
                 const recordDate = new Date(expenseData.date);
@@ -221,7 +212,7 @@
 
                 state.isEditing = false;
                 state.editRecord = null;
-                navigate('quickLog');
+                navigate('quickLog'); 
             } catch (e) {
                 console.error("儲存/更新紀錄失敗:", e);
                 showToast('儲存/更新紀錄失敗!', 'error');
@@ -265,14 +256,12 @@
             return total;
         }
 
-        // 預算檢查
         function checkBudgetAlert(categoryId, date, newAmount, recordId) {
             const category = state.categories.find(c => c.id === categoryId);
             if (!category || !category.budget || category.budget <= 0) return;
 
             const targetMonth = date.getFullYear() * 12 + date.getMonth();
             
-            // 1. 計算該月份現有的其他支出 (排除當前這筆 ID)
             const otherExpensesTotal = state.expenses
                 .filter(exp => {
                     const expMonth = exp.date.getFullYear() * 12 + exp.date.getMonth();
@@ -282,9 +271,7 @@
                 })
                 .reduce((sum, exp) => sum + exp.amount, 0);
 
-            // 2. 加上當前這筆的金額
             const totalSpent = otherExpensesTotal + newAmount;
-            
             const budget = category.budget;
             const percentage = (totalSpent / budget) * 100;
 
@@ -312,16 +299,12 @@
         }
 
         // --- 標籤功能 ---
-        
-        // 取得指定分類的前 N 個熱門標籤
         function getTopTags(categoryId) {
             if (!categoryId) return [];
             const tagCounts = {};
-            
             state.expenses
                 .filter(e => e.categoryId === categoryId && e.note)
                 .forEach(e => {
-                    // 匹配 # 開頭，後接非空白字符
                     const matches = e.note.match(/#\S+/g);
                     if (matches) {
                         matches.forEach(tag => {
@@ -329,15 +312,12 @@
                         });
                     }
                 });
-            
-            // 轉為陣列並排序
             return Object.entries(tagCounts)
-                .sort((a, b) => b[1] - a[1]) // 按頻率降序
-                .slice(0, 5) // 取前 5 名
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
                 .map(entry => entry[0]);
         }
 
-        // 渲染建議標籤
         function renderSuggestedTags(categoryId) {
             const tags = getTopTags(categoryId);
             const container = document.getElementById('suggested-tags');
@@ -357,11 +337,9 @@
             `).join('');
         }
 
-        // 加入標籤到備註欄
         window.addTag = (tag) => {
             const noteInput = document.getElementById('note');
             if (noteInput) {
-                // 如果已經包含該標籤，則不重複加入
                 if (!noteInput.value.includes(tag)) {
                     noteInput.value = (noteInput.value + ' ' + tag).trim();
                 }
@@ -374,6 +352,12 @@
             state.currentPage = page;
             renderApp();
         }
+
+        // 切換總覽模式
+        window.switchSummaryMode = (mode) => {
+            state.summaryMode = mode;
+            renderApp();
+        };
 
         function showModal(title, content, onConfirm = null, isAlert = false) {
             const modalHtml = `
@@ -415,7 +399,6 @@
             }, 3000);
         }
 
-        // 渲染函數
         function renderNavBar() {
             if (state.currentPage === 'login') return '';
             const navItems = [
@@ -468,10 +451,9 @@
                 `<option value="${p}" ${record.paymentMethod === p ? 'selected' : ''}>${p}</option>`
             ).join('');
 
+            // 這裡不再顯示預算%
             const totalThisMonth = calculateMonthlySpending(null, new Date());
             let currentMonth = new Date().toLocaleString('zh-TW', { month: 'long', year: 'numeric' });
-            
-            // 已移除預算百分比計算
 
             return `
                 <div class="p-5 pb-20">
@@ -504,10 +486,7 @@
                             </select>
                         </div>
 
-                        <!-- 常用標籤顯示區域 -->
-                        <div id="suggested-tags" class="flex flex-wrap gap-2 min-h-[24px]">
-                            <!-- 標籤會由 JavaScript 動態填入 -->
-                        </div>
+                        <div id="suggested-tags" class="flex flex-wrap gap-2 min-h-[24px]"></div>
                         
                         <div>
                             <label for="payment-method" class="text-sm text-gray-500 block mb-1">支付方式</label>
@@ -555,9 +534,7 @@
                 const dailyTotal = groupedExpenses[dateStr].reduce((sum, exp) => sum + exp.amount, 0);
                 const recordsHtml = groupedExpenses[dateStr].map(exp => {
                     const category = getCategory(exp.categoryId);
-                    // 將備註中的標籤高亮顯示
                     const noteHtml = (exp.note || '無備註').replace(/(#\S+)/g, '<span class="text-blue-500">$1</span>');
-                    
                     return `
                         <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
                             <div class="flex-1 min-w-0">
@@ -572,12 +549,8 @@
                                 <p class="text-xs text-gray-400">${exp.paymentMethod}</p>
                             </div>
                             <div class="flex space-x-2 ml-4">
-                                <button onclick="window.startEdit('${exp.id}')" class="text-blue-500 hover:text-blue-700 p-1 rounded-full bg-blue-50">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                                </button>
-                                <button onclick="window.confirmDelete('${exp.id}')" class="text-red-500 hover:text-red-700 p-1 rounded-full bg-red-50">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.86 11.14A2 2 0 0116.14 20H7.86a2 2 0 01-1.99-1.86L5 7m5 4v6m4-6v6m-4-10h4m-8 0h12" /></svg>
-                                </button>
+                                <button onclick="window.startEdit('${exp.id}')" class="text-blue-500 hover:text-blue-700 p-1 rounded-full bg-blue-50">✏️</button>
+                                <button onclick="window.confirmDelete('${exp.id}')" class="text-red-500 hover:text-red-700 p-1 rounded-full bg-red-50">🗑️</button>
                             </div>
                         </div>
                     `;
@@ -604,89 +577,184 @@
             `;
         }
 
+        // 修改後的總覽頁面：圓餅圖 + 預算進度
         function renderSummaryPage() {
             const today = new Date();
-            const currentMonthKey = today.getFullYear() + '-' + (today.getMonth() + 1).toString().padStart(2, '0');
-            const totalThisMonth = calculateMonthlySpending(null, today);
+            const currentYear = today.getFullYear();
+            const currentMonth = today.getMonth(); // 0-11
             
-            const categorySpending = state.categories.map(cat => {
-                const spent = calculateMonthlySpending(cat.id, today);
-                const budget = cat.budget || 0;
-                const percent = budget > 0 ? (spent / budget) * 100 : 0;
-                const progressColor = percent >= 100 ? '#FF6B6B' : '#4ECDC4';
-                const conicGradient = `conic-gradient(${progressColor} ${percent}%, #f0f0f0 ${percent}%)`;
-                
-                return {
-                    ...cat,
-                    spent,
-                    budget,
-                    percent: Math.min(percent, 100),
-                    displayPercent: percent.toFixed(1),
-                    conicGradient
-                };
-            }).filter(cat => cat.spent > 0 || cat.budget > 0);
-
-            const categorySummaryHtml = categorySpending.map(cat => `
-                <div class="flex items-center justify-between p-3 bg-white rounded-xl shadow-sm border border-gray-100">
-                    <div class="flex-1">
-                        <p class="font-bold text-gray-800 flex items-center">
-                            <span class="inline-block w-3 h-3 mr-2 rounded-full" style="background-color: ${cat.color};"></span>
-                            ${cat.name}
-                        </p>
-                        <p class="text-sm text-gray-500">已花費 NT$ ${cat.spent.toLocaleString('zh-TW')}</p>
-                        <p class="text-xs text-gray-400">預算 NT$ ${cat.budget.toLocaleString('zh-TW')}</p>
-                    </div>
-                    <div class="circular-progress" style="background: ${cat.conicGradient};">
-                        <span class="progress-value">${cat.displayPercent}%</span>
-                    </div>
-                </div>
-            `).join('');
-
-            const monthlyTotals = state.expenses.reduce((acc, exp) => {
-                const monthKey = exp.date.getFullYear() + '-' + (exp.date.getMonth() + 1).toString().padStart(2, '0');
-                if (monthKey !== currentMonthKey) {
-                    acc[monthKey] = (acc[monthKey] || 0) + exp.amount;
+            const mode = state.summaryMode; // 'month' or 'year'
+            
+            // 篩選當前區間的支出
+            const filteredExpenses = state.expenses.filter(exp => {
+                const expDate = exp.date;
+                if (mode === 'month') {
+                    return expDate.getFullYear() === currentYear && expDate.getMonth() === currentMonth;
+                } else {
+                    return expDate.getFullYear() === currentYear;
                 }
-                return acc;
-            }, {});
+            });
 
-            const monthlyHtml = Object.keys(monthlyTotals).sort().reverse().map(monthKey => `
-                <div class="flex justify-between items-center p-4 bg-white rounded-xl shadow-sm mb-3">
-                    <span class="text-lg font-semibold text-gray-700">${monthKey}</span>
-                    <span class="text-xl font-bold text-accent">- NT$ ${monthlyTotals[monthKey].toLocaleString('zh-TW')}</span>
-                </div>
-            `).join('');
+            // 計算分類支出
+            const categoryData = {};
+            let totalPeriodExpense = 0;
+            
+            filteredExpenses.forEach(exp => {
+                if (!categoryData[exp.categoryId]) {
+                    categoryData[exp.categoryId] = 0;
+                }
+                categoryData[exp.categoryId] += exp.amount;
+                totalPeriodExpense += exp.amount;
+            });
 
-            const yearlyTotals = state.expenses.reduce((acc, exp) => {
-                const yearKey = exp.date.getFullYear().toString();
-                acc[yearKey] = (acc[yearKey] || 0) + exp.amount;
-                return acc;
-            }, {});
+            // 準備圖表數據
+            const labels = [];
+            const dataPoints = [];
+            const backgroundColors = [];
 
-            const yearlyHtml = Object.keys(yearlyTotals).sort().reverse().map(yearKey => `
-                <div class="flex justify-between items-center p-4 bg-white rounded-xl shadow-sm mb-3 border-l-4 border-blue-500">
-                    <span class="text-xl font-bold text-blue-600">${yearKey} 總支出</span>
-                    <span class="text-2xl font-extrabold text-accent">- NT$ ${yearlyTotals[yearKey].toLocaleString('zh-TW')}</span>
-                </div>
-            `).join('');
+            state.categories.forEach(cat => {
+                if (categoryData[cat.id] > 0) {
+                    labels.push(cat.name);
+                    dataPoints.push(categoryData[cat.id]);
+                    backgroundColors.push(cat.color || '#ccc');
+                }
+            });
+
+            // 預算進度條 HTML
+            let budgetBarsHtml = '';
+            // 找出有設定預算的分類 (budget > 0)
+            const budgetedCategories = state.categories.filter(c => c.budget && c.budget > 0);
+            
+            if (budgetedCategories.length > 0) {
+                budgetBarsHtml = budgetedCategories.map(cat => {
+                    const spent = categoryData[cat.id] || 0;
+                    // 如果是年模式，預算 x 12 (簡單估算)
+                    const periodBudget = mode === 'year' ? cat.budget * 12 : cat.budget;
+                    const percent = (spent / periodBudget) * 100;
+                    const barColor = percent > 100 ? 'bg-red-500' : (cat.color ? `bg-[${cat.color}]` : 'bg-green-500'); // 這裡簡化，直接用固定色或 Tailwind class
+                    // Tailwind 不支援動態 hex class，所以這裡用 style
+                    const barStyle = `width: ${Math.min(percent, 100)}%; background-color: ${percent > 100 ? '#ef4444' : (cat.color || '#10b981')};`;
+                    const percentText = percent.toFixed(1);
+                    
+                    return `
+                        <div class="mb-4">
+                            <div class="flex justify-between mb-1">
+                                <span class="text-sm font-medium text-gray-700">${cat.name}</span>
+                                <span class="text-sm font-medium text-gray-700">
+                                    ${Math.round(spent).toLocaleString()} / ${periodBudget.toLocaleString()} (${percentText}%)
+                                </span>
+                            </div>
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div class="h-2.5 rounded-full transition-all duration-500" style="${barStyle}"></div>
+                            </div>
+                            ${percent > 100 ? '<p class="text-xs text-red-500 mt-1">已超支</p>' : ''}
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                budgetBarsHtml = '<p class="text-gray-500 text-sm">尚未設定分類預算</p>';
+            }
+
+            // 按鈕樣式
+            const btnClass = (active) => active ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700';
 
             return `
                 <div class="p-5 pb-20">
                     <h1 class="text-3xl font-bold mb-6 text-gray-800">支出總覽</h1>
-                    <div class="bg-green-100 p-4 rounded-xl mb-8 shadow-md border-2 border-green-500">
-                        <h2 class="text-2xl font-bold mb-3 text-green-700">${currentMonthKey} 總結</h2>
-                        <p class="text-4xl font-extrabold text-accent mb-4">NT$ ${totalThisMonth.toLocaleString('zh-TW')}</p>
-                        <h3 class="text-lg font-bold mb-2 text-gray-700">分類分佈</h3>
-                        <div class="space-y-3">
-                            ${categorySummaryHtml || '<p class="text-gray-500 text-sm">本月尚無分類支出數據。</p>'}
-                        </div>
+                    
+                    <!-- 切換按鈕 -->
+                    <div class="flex justify-center mb-6 space-x-4">
+                        <button onclick="window.switchSummaryMode('month')" class="px-4 py-2 rounded-lg font-bold ${btnClass(mode === 'month')}">本月</button>
+                        <button onclick="window.switchSummaryMode('year')" class="px-4 py-2 rounded-lg font-bold ${btnClass(mode === 'year')}">本年</button>
                     </div>
-                    <h2 class="text-2xl font-bold mb-4 text-blue-600">年度總結</h2>
-                    <div class="space-y-3 mb-8">${yearlyHtml || '<p class="text-gray-500">尚無年度數據</p>'}</div>
-                    <h2 class="text-2xl font-bold mb-4 text-gray-800">過往月份總結</h2>
-                    <div class="space-y-3">${monthlyHtml || '<p class="text-gray-500">尚無月份數據</p>'}</div>
+
+                    <!-- 圓餅圖區塊 -->
+                    <div class="bg-white p-4 rounded-xl shadow-md mb-8 flex flex-col items-center">
+                        <h2 class="text-xl font-bold mb-4 text-gray-700">${mode === 'month' ? '本月' : '本年'}支出分佈</h2>
+                        ${dataPoints.length > 0 
+                            ? '<div class="w-full h-64 relative"><canvas id="expenseChart"></canvas></div>' 
+                            : '<p class="text-gray-500 py-10">尚無支出資料</p>'}
+                        <p class="mt-4 text-2xl font-bold text-accent">總支出: NT$ ${totalPeriodExpense.toLocaleString()}</p>
+                    </div>
+
+                    <!-- 預算進度區塊 -->
+                    <div class="bg-white p-4 rounded-xl shadow-md">
+                        <h2 class="text-xl font-bold mb-4 text-gray-800">預算執行狀況 (${mode === 'month' ? '月預算' : '年預算估計'})</h2>
+                        ${budgetBarsHtml}
+                    </div>
                 </div>
             `;
+        }
+
+        // 繪製圖表
+        function updateSummaryChart() {
+            const ctx = document.getElementById('expenseChart');
+            if (!ctx) return;
+
+            // 銷毀舊圖表
+            if (state.chartInstance) {
+                state.chartInstance.destroy();
+            }
+
+            // 重新計算數據 (邏輯與 renderSummaryPage 相同，這裡為了簡單直接從 DOM 讀取或重新計算)
+            // 為了保持一致性，我們再次執行計算邏輯 (理想情況下應該將數據計算分離出來)
+            const today = new Date();
+            const currentYear = today.getFullYear();
+            const currentMonth = today.getMonth(); 
+            const mode = state.summaryMode;
+            
+            const filteredExpenses = state.expenses.filter(exp => {
+                const expDate = exp.date;
+                if (mode === 'month') {
+                    return expDate.getFullYear() === currentYear && expDate.getMonth() === currentMonth;
+                } else {
+                    return expDate.getFullYear() === currentYear;
+                }
+            });
+
+            const categoryData = {};
+            filteredExpenses.forEach(exp => {
+                if (!categoryData[exp.categoryId]) categoryData[exp.categoryId] = 0;
+                categoryData[exp.categoryId] += exp.amount;
+            });
+
+            const labels = [];
+            const dataPoints = [];
+            const backgroundColors = [];
+
+            state.categories.forEach(cat => {
+                if (categoryData[cat.id] > 0) {
+                    labels.push(cat.name);
+                    dataPoints.push(categoryData[cat.id]);
+                    backgroundColors.push(cat.color || '#ccc');
+                }
+            });
+
+            if (dataPoints.length === 0) return;
+
+            state.chartInstance = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: dataPoints,
+                        backgroundColor: backgroundColors,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: { family: "'Zen Maru Gothic', sans-serif" }
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         function renderSettingsPage() {
@@ -762,6 +830,11 @@
             `;
             modalContainer.innerHTML = '';
             attachEventListeners(page);
+
+            // 如果是總覽頁面，繪製圖表
+            if (page === 'summary') {
+                updateSummaryChart();
+            }
         }
 
         // --- 事件監聽器與處理函數 ---
@@ -775,14 +848,11 @@
                 const form = document.getElementById('expense-form');
                 if (form) form.addEventListener('submit', handleExpenseFormSubmit);
                 
-                // 監聽分類改變，更新建議標籤
                 const categorySelect = document.getElementById('category-id');
                 if (categorySelect) {
                     categorySelect.addEventListener('change', (e) => {
                         renderSuggestedTags(e.target.value);
                     });
-                    
-                    // 初始化時如果已有選擇分類（例如編輯模式或預設），也要渲染
                     if (categorySelect.value) {
                         renderSuggestedTags(categorySelect.value);
                     }
@@ -851,19 +921,18 @@
                 form.reset();
                 form.elements['date'].value = new Date().toISOString().split('T')[0];
                 form.elements['amount'].value = '';
-                // 也要重置標籤建議
                 document.getElementById('suggested-tags').innerHTML = '';
             }
         }
 
-        // 全域函數定義 (直接掛載到 window)
+        // 全域函數定義
         window.navigate = navigate;
+        window.switchSummaryMode = switchSummaryMode;
         
         window.startEdit = (recordId) => {
             const record = state.expenses.find(e => e.id === recordId);
             if (record) {
                 state.isEditing = true;
-                // 修正：保持 date 為 Date 物件，避免 renderQuickLogPage 中 toISOString() 錯誤
                 state.editRecord = { ...record };
                 navigate('quickLog');
             }
