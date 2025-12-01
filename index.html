@@ -3,1021 +3,1124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>無名帳簿</title>
-    <!-- 引入 Tailwind CSS -->
+    <title>個人水肺潛水日誌 - 登入/註冊</title>
+    <!-- 載入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- 引入 Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- 引入 Zen Maru Gothic 字體 -->
-    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;700&display=swap" rel="stylesheet">
+    <!-- 載入 Inter 字體 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
     <style>
-        /* 設定 Zen Maru Gothic 為主要字體 */
-        body {
-            font-family: 'Zen Maru Gothic', sans-serif;
-            background-color: #f8f8f8;
+        body { font-family: 'Inter', sans-serif; background-color: #f0f4f8; }
+        .tab-active { border-color: #10b981; color: #10b981; font-weight: 600; }
+        .tab-inactive { border-color: transparent; color: #6b7280; }
+        /* Style for form elements to be consistent */
+        input[type="number"], input[type="text"], input[type="date"], input[type="datetime-local"], textarea, select, input[type="email"], input[type="password"] {
+            border: 1px solid #d1d5db;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.375rem; /* rounded-md */
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            width: 100%;
         }
-        .app-container {
-            max-width: 420px; /* 模擬手機寬度 */
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            min-height: 100vh;
-        }
-        /* 自定義顏色 */
-        .btn-primary {
-            background-color: #4CAF50; /* 綠色 */
-            color: white;
-            transition: background-color 0.2s;
-        }
-        .btn-primary:hover {
-            background-color: #45a049;
-        }
-        .text-accent {
-            color: #192152; /* 支出色 (深藍) */
-        }
-        .bg-accent {
-            background-color: #192152;
-        }
-        .nav-icon {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-        /* 進度條動畫 */
-        .progress-bar {
-            transition: width 0.5s ease-in-out;
+        .metric-unit {
+            position: absolute;
+            right: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6b7280;
+            font-size: 0.875rem;
+            pointer-events: none;
         }
     </style>
 </head>
-<body class="flex justify-center items-start min-h-screen">
-    <div id="app" class="app-container bg-white">
-        <!-- 應用程式內容將由 JavaScript 渲染 -->
+<body class="p-4 md:p-8">
+
+<div id="app" class="max-w-4xl mx-auto bg-white shadow-xl rounded-xl p-4 md:p-8">
+    <h1 class="text-3xl font-bold text-center text-gray-800 mb-6 border-b pb-3">
+        個人潛水日誌管理
+    </h1>
+
+    <!-- 頁面容器 -->
+    <div id="page-content">
+        <!-- 內容將由 JavaScript 動態插入 (Auth Form / Main App) -->
     </div>
 
-    <!-- 模態框容器 -->
-    <div id="modal-container"></div>
+    <!-- 訊息彈窗 (Modal) -->
+    <!-- Modified: Added items-start and pt-10 to allow scrolling from top on small screens if needed, though center alignment usually works with max-h -->
+    <div id="modal-container" class="hidden fixed inset-0 bg-gray-600 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <!-- Modified: Added max-h-[90vh] and overflow-y-auto to allow scrolling -->
+        <div id="modal-content" class="bg-white rounded-lg shadow-2xl p-6 w-full max-w-lg transform transition-all max-h-[90vh] overflow-y-auto">
+            <!-- Modal content will be dynamically updated -->
+        </div>
+    </div>
 
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, setDoc, getDoc, updateDoc, deleteDoc, query, where, onSnapshot, orderBy, serverTimestamp, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+</div>
 
-        // 設定 Firebase 日誌級別
-        setLogLevel('Silent');
+<!-- Firebase 載入與設定 -->
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { 
+        getAuth, 
+        onAuthStateChanged, 
+        signInWithEmailAndPassword, 
+        createUserWithEmailAndPassword, 
+        signOut 
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import {
+        getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, deleteDoc, setLogLevel, query, orderBy
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- 全域變數和 Firebase 初始化 ---
-        const appElement = document.getElementById('app');
-        const modalContainer = document.getElementById('modal-container');
-        let db, auth, userId;
-        let isAuthReady = false;
+    // 依據使用者提供的設定
+    const firebaseConfig = {
+        apiKey: "AIzaSyC3fd-GshapbMcRr5lxRGZUSimUOgc7Pbo",
+        authDomain: "divelog-f2c16.firebaseapp.com",
+        projectId: "divelog-f2c16",
+        storageBucket: "divelog-f2c16.firebasestorage.app",
+        messagingSenderId: "993266923402",
+        appId: "1:993266923402:web:b8eef51868e65e21e8fa73",
+        measurementId: "G-SVPJSB5VKY"
+    };
 
-        // 從 Canvas 環境變數獲取配置
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : JSON.stringify({
-            apiKey: "AIzaSyBJcP4HOoVFnbzLT-jdnrW1AtAWXVfjEaM",
-            authDomain: "my-expense-tracker-574dd.firebaseapp.com",
-            projectId: "my-expense-tracker-574dd",
-            storageBucket: "my-expense-tracker-574dd.firebasestorage.app",
-            messagingSenderId: "514938495732",
-            appId: "1:514938495732:web:bb3529eca4f2db547b74a1",
-        }));
+    // 使用 projectId 作為 app ID
+    const appId = firebaseConfig.projectId;
 
-        try {
-            const app = initializeApp(firebaseConfig);
-            db = getFirestore(app);
-            auth = getAuth(app);
-        } catch (e) {
-            console.error("Firebase 初始化失敗:", e);
-        }
+    // Set Firebase log level to debug
+    setLogLevel('Debug');
 
-        const dbPath = (collectionName) => `/artifacts/${appId}/users/${userId}/${collectionName}`;
+    let db = null;
+    let auth = null;
+    let userId = null; // Stored user ID
+    let isAuthReady = false;
 
-        // 應用程式狀態
-        let state = {
-            currentPage: 'quickLog', // 'login', 'quickLog', 'history', 'summary', 'settings'
-            expenses: [],
-            categories: [], // {id, name, budget, color}
-            paymentMethods: ['現金', '信用卡'],
-            isEditing: false,
-            editRecord: null,
-            summaryMode: 'month', // 'month' or 'year'
-            chartInstance: null // 用於儲存 Chart.js 實例
-        };
+    // Global application state
+    window.app = {
+        currentPage: 'log',
+        diveLogs: [],
+        gearList: [],
+        certifications: [],
+        currentEditingLog: null,
+        isLoggedIn: false, // New state for login status
+        authMode: 'login', // 'login' or 'register'
+        authError: '', // Store authentication errors
 
-        // --- 認證流程 ---
-        async function handleInitialAuth() {
-            try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (error) {
-                console.error("初始認證失敗:", error);
-                await signInAnonymously(auth); 
-            }
-        }
+        setAuthMode(mode) {
+            this.authMode = mode;
+            this.authError = '';
+            this.render();
+        },
+        
+        setPage(page) {
+            this.currentPage = page;
+            this.render();
+            this.updateTabs();
+        },
 
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                userId = user.uid;
-                console.log("用戶已登入, UID:", userId);
-                if (!isAuthReady) {
-                    isAuthReady = true;
-                    // 只有在首次認證完成時才切換到主頁面
-                    state.currentPage = 'quickLog';
-                    loadInitialData();
-                }
-            } else {
-                console.log("用戶已登出或未認證");
-                userId = null;
-                isAuthReady = true;
-                state.currentPage = 'login';
-                renderApp();
-            }
-        });
-
-        if (typeof __initial_auth_token !== 'undefined') {
-             handleInitialAuth(); 
-        }
-
-        // --- Firestore 數據操作 ---
-
-        function loadInitialData() {
-            if (!isAuthReady || !userId) return;
-
-            // 1. 監聽設定 (分類和支付方式)
-            const settingsRef = doc(db, dbPath('settings'), 'config');
-            onSnapshot(settingsRef, (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    state.categories = data.categories || [];
-                    state.paymentMethods = data.paymentMethods || ['現金', '信用卡'];
-                } else {
-                    // 首次使用，設定預設值
-                    console.log("初始化使用者設定...");
-                    setDoc(settingsRef, {
-                        categories: [
-                            { id: crypto.randomUUID(), name: '餐飲', budget: 10000, color: '#FF6B6B' },
-                            { id: crypto.randomUUID(), name: '交通', budget: 5000, color: '#4ECDC4' },
-                            { id: crypto.randomUUID(), name: '娛樂', budget: 3000, color: '#4F5D75' },
-                        ],
-                        paymentMethods: ['現金', '信用卡', '其他'],
-                        lastUpdated: serverTimestamp()
-                    });
-                }
-                renderApp();
-            }, (error) => console.error("監聽設定失敗:", error));
-
-            // 2. 監聽支出紀錄 (按日期排序)
-            const expensesQuery = query(collection(db, dbPath('expenses')), orderBy('date', 'desc'));
-            onSnapshot(expensesQuery, (snapshot) => {
-                state.expenses = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    date: doc.data().date.toDate(), // 將 Timestamp 轉換為 Date 物件
-                    amount: parseFloat(doc.data().amount) // 確保金額是數字
-                }));
-                renderApp();
-            }, (error) => console.error("監聽支出紀錄失敗:", error));
-        }
-
-        // 儲存或更新支出紀錄
-        async function saveExpense(expenseData, recordId = null) {
-            try {
-                const recordDate = new Date(expenseData.date);
-                const amount = parseFloat(expenseData.amount);
-                let targetId = recordId;
-
-                if (recordId) {
-                    const docRef = doc(db, dbPath('expenses'), recordId);
-                    await updateDoc(docRef, { ...expenseData, date: recordDate, amount });
-                    showToast('紀錄已更新！', 'success');
-                } else {
-                    const newDocRef = doc(collection(db, dbPath('expenses')));
-                    targetId = newDocRef.id;
-                    const newRecord = {
-                        ...expenseData,
-                        date: recordDate,
-                        amount,
-                        createdAt: serverTimestamp()
-                    };
-                    await setDoc(newDocRef, newRecord);
-                    showToast('紀錄已儲存！', 'success');
-                }
-
-                // 檢查預算
-                checkBudgetAlert(expenseData.categoryId, recordDate, amount, targetId);
-
-                state.isEditing = false;
-                state.editRecord = null;
-                navigate('quickLog'); 
-            } catch (e) {
-                console.error("儲存/更新紀錄失敗:", e);
-                showToast('儲存/更新紀錄失敗!', 'error');
-            }
-        }
-
-        async function deleteExpense(recordId) {
-            try {
-                await deleteDoc(doc(db, dbPath('expenses'), recordId));
-                showToast('紀錄已刪除', 'success');
-            } catch (e) {
-                console.error("刪除紀錄失敗:", e);
-                showToast('刪除紀錄失敗', 'error');
-            }
-        }
-
-        async function updateCategories(newCategories) {
-            try {
-                const settingsRef = doc(db, dbPath('settings'), 'config');
-                await updateDoc(settingsRef, {
-                    categories: newCategories,
-                    lastUpdated: serverTimestamp()
-                });
-                showToast('分類預算已更新！', 'success');
-            } catch (e) {
-                console.error("更新分類失敗:", e);
-                showToast('更新分類失敗!', 'error');
-            }
-        }
-
-        // --- 核心應用邏輯 ---
-
-        function calculateMonthlySpending(categoryId, date) {
-            const targetMonth = date.getFullYear() * 12 + date.getMonth();
-            const total = state.expenses
-                .filter(exp => {
-                    const expMonth = exp.date.getFullYear() * 12 + exp.date.getMonth();
-                    return expMonth === targetMonth && (categoryId === null || exp.categoryId === categoryId);
-                })
-                .reduce((sum, exp) => sum + exp.amount, 0);
-            return total;
-        }
-
-        function checkBudgetAlert(categoryId, date, newAmount, recordId) {
-            const category = state.categories.find(c => c.id === categoryId);
-            if (!category || !category.budget || category.budget <= 0) return;
-
-            const targetMonth = date.getFullYear() * 12 + date.getMonth();
-            
-            const otherExpensesTotal = state.expenses
-                .filter(exp => {
-                    const expMonth = exp.date.getFullYear() * 12 + exp.date.getMonth();
-                    return exp.id !== recordId && 
-                           expMonth === targetMonth && 
-                           exp.categoryId === categoryId;
-                })
-                .reduce((sum, exp) => sum + exp.amount, 0);
-
-            const totalSpent = otherExpensesTotal + newAmount;
-            const budget = category.budget;
-            const percentage = (totalSpent / budget) * 100;
-
-            let message = '';
-            let title = '預算提醒';
-
-            const formattedTotal = Math.round(totalSpent).toLocaleString('zh-TW');
-            const formattedBudget = Math.round(budget).toLocaleString('zh-TW');
-
-            if (percentage >= 100) {
-                message = `您已超出 ${category.name} 分類本月的預算 ${formattedBudget} 元！當月已花費 ${formattedTotal} 元。`;
-                title = '🚨 預算超支警告';
-            } else if (percentage >= 90) {
-                message = `您在 ${category.name} 分類本月已花費 ${formattedTotal} 元，已達到預算的 90%！請留意。`;
-                title = '⚠️ 預算接近警告';
-            } else if (percentage >= 70) {
-                message = `您在 ${category.name} 分類本月已花費 ${formattedTotal} 元，已達到預算的 70%。`;
-            } else if (percentage >= 50) {
-                message = `您在 ${category.name} 分類本月已花費 ${formattedTotal} 元，已達到預算的 50%。`;
-            }
-
-            if (message) {
-                showModal(title, message, null, true);
-            }
-        }
-
-        // --- 標籤功能 ---
-        function getTopTags(categoryId) {
-            if (!categoryId) return [];
-            const tagCounts = {};
-            state.expenses
-                .filter(e => e.categoryId === categoryId && e.note)
-                .forEach(e => {
-                    const matches = e.note.match(/#\S+/g);
-                    if (matches) {
-                        matches.forEach(tag => {
-                            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-                        });
+        updateTabs() {
+            ['log', 'history', 'info'].forEach(tab => {
+                const element = document.getElementById(`tab-${tab}`);
+                if (element) {
+                    element.classList.remove('tab-active', 'border-teal-500', 'tab-inactive', 'border-gray-200');
+                    if (tab === this.currentPage) {
+                        element.classList.add('tab-active', 'border-teal-500');
+                    } else {
+                        element.classList.add('tab-inactive', 'border-gray-200');
                     }
-                });
-            return Object.entries(tagCounts)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 5)
-                .map(entry => entry[0]);
-        }
-
-        function renderSuggestedTags(categoryId) {
-            const tags = getTopTags(categoryId);
-            const container = document.getElementById('suggested-tags');
-            if (!container) return;
-
-            if (tags.length === 0) {
-                container.innerHTML = '<span class="text-xs text-gray-400">此分類尚無常用標籤，試試在備註輸入 #標籤</span>';
+                }
+            });
+        },
+        
+        // --- Main Render Function ---
+        render() {
+            const container = document.getElementById('page-content');
+            
+            // Check authentication status first
+            if (!isAuthReady) {
+                container.innerHTML = `<div class="text-center py-12 text-gray-500">正在檢查登入狀態...</div>`;
                 return;
             }
 
-            container.innerHTML = tags.map(tag => `
-                <button type="button" 
-                    onclick="window.addTag('${tag}')"
-                    class="bg-blue-50 text-blue-600 text-xs px-3 py-1 rounded-full hover:bg-blue-100 transition-colors border border-blue-100">
-                    ${tag}
-                </button>
-            `).join('');
-        }
-
-        window.addTag = (tag) => {
-            const noteInput = document.getElementById('note');
-            if (noteInput) {
-                if (!noteInput.value.includes(tag)) {
-                    noteInput.value = (noteInput.value + ' ' + tag).trim();
-                }
-            }
-        };
-
-        // --- UI 組件及渲染 ---
-
-        function navigate(page) {
-            state.currentPage = page;
-            renderApp();
-        }
-
-        // 切換總覽模式
-        window.switchSummaryMode = (mode) => {
-            state.summaryMode = mode;
-            renderApp();
-        };
-
-        function showModal(title, content, onConfirm = null, isAlert = false) {
-            const modalHtml = `
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-                    <div class="bg-white p-6 rounded-xl shadow-2xl w-11/12 max-w-sm">
-                        <h3 class="text-xl font-bold mb-4">${title}</h3>
-                        <p class="mb-6">${content}</p>
-                        <div class="flex justify-end space-x-3">
-                            ${!isAlert ? `<button id="modal-cancel" class="px-4 py-2 text-gray-600 bg-gray-200 rounded-lg">取消</button>` : ''}
-                            <button id="modal-confirm" class="px-4 py-2 text-white rounded-lg ${onConfirm ? 'btn-primary' : 'bg-green-500 hover:bg-green-600'}">
-                                ${onConfirm ? '確認' : '關閉'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            modalContainer.innerHTML = modalHtml;
-
-            const closeModal = () => modalContainer.innerHTML = '';
-
-            document.getElementById('modal-confirm').onclick = () => {
-                if (onConfirm) onConfirm();
-                closeModal();
-            };
-            if (!isAlert) {
-                const cancelBtn = document.getElementById('modal-cancel');
-                if (cancelBtn) cancelBtn.onclick = closeModal;
-            }
-        }
-
-        function showToast(message, type = 'info') {
-            const toast = document.createElement('div');
-            toast.className = `fixed bottom-20 left-1/2 transform -translate-x-1/2 p-3 rounded-xl text-white shadow-lg transition-opacity duration-300 z-50 ${type === 'success' ? 'bg-green-500' : 'bg-red-500'}`;
-            toast.textContent = message;
-            document.body.appendChild(toast);
-            setTimeout(() => {
-                toast.style.opacity = '0';
-                toast.addEventListener('transitionend', () => toast.remove());
-            }, 3000);
-        }
-
-        function renderNavBar() {
-            if (state.currentPage === 'login') return '';
-            const navItems = [
-                { id: 'quickLog', icon: '📝', label: '快速記帳' },
-                { id: 'history', icon: '📜', label: '紀錄' },
-                { id: 'summary', icon: '📈', label: '總覽' },
-                { id: 'settings', icon: '⚙️', label: '設定' },
-            ];
-
-            return `
-                <nav class="fixed bottom-0 w-full max-w-[420px] bg-white border-t border-gray-200 shadow-xl z-10">
-                    <div class="flex justify-around h-16">
-                        ${navItems.map(item => `
-                            <button onclick="window.navigate('${item.id}')"
-                                class="flex flex-col items-center justify-center text-xs w-1/4 pt-1 ${state.currentPage === item.id ? 'text-green-600 font-bold' : 'text-gray-500'}">
-                                <span class="text-xl">${item.icon}</span>
-                                <span>${item.label}</span>
-                            </button>
-                        `).join('')}
-                    </div>
-                </nav>
-            `;
-        }
-
-        function renderLoginPage() {
-            return `
-                <div class="p-6 pt-16 flex flex-col items-center">
-                    <h1 class="text-4xl font-bold mb-10 text-green-600">Zen 記帳本</h1>
-                    <div class="w-full max-w-sm">
-                        <input id="email-input" type="email" placeholder="電子郵件" class="w-full p-3 mb-4 border border-gray-300 rounded-xl focus:border-green-500 focus:ring focus:ring-green-200" required>
-                        <input id="password-input" type="password" placeholder="密碼" class="w-full p-3 mb-6 border border-gray-300 rounded-xl focus:border-green-500 focus:ring focus:ring-green-200" required>
-                        <button id="login-btn" class="w-full p-3 btn-primary font-bold rounded-xl mb-3">登入</button>
-                        <button id="signup-btn" class="w-full p-3 bg-gray-200 text-gray-700 font-bold rounded-xl">註冊新帳號</button>
-                    </div>
-                </div>
-            `;
-        }
-
-        function renderQuickLogPage() {
-            const today = new Date().toISOString().split('T')[0];
-            const isEditing = state.isEditing;
-            const record = state.editRecord || {};
-            const initialAmount = record.amount || '';
-
-            const categoryOptions = state.categories.map(c =>
-                `<option value="${c.id}" ${record.categoryId === c.id ? 'selected' : ''}>${c.name}</option>`
-            ).join('');
-
-            const paymentOptions = state.paymentMethods.map(p =>
-                `<option value="${p}" ${record.paymentMethod === p ? 'selected' : ''}>${p}</option>`
-            ).join('');
-
-            // 這裡不再顯示預算%
-            const totalThisMonth = calculateMonthlySpending(null, new Date());
-            let currentMonth = new Date().toLocaleString('zh-TW', { month: 'long', year: 'numeric' });
-
-            return `
-                <div class="p-5 pb-20">
-                    <div class="bg-green-600 text-white p-4 rounded-xl mb-6 shadow-md">
-                        <h2 class="text-lg font-light">${currentMonth} 總支出</h2>
-                        <p class="text-4xl font-bold mb-1">NT$ ${totalThisMonth.toLocaleString('zh-TW')}</p>
-                    </div>
-
-                    <h2 class="text-2xl font-bold mb-4 text-gray-800">${isEditing ? '編輯紀錄' : '快速記帳'}</h2>
-                    <form id="expense-form" class="space-y-4">
-                        <input type="hidden" id="record-id" value="${record.id || ''}">
-                        
-                        <div>
-                            <label for="date" class="text-sm text-gray-500 block mb-1">日期</label>
-                            <input type="date" id="date" name="date" value="${record.date ? record.date.toISOString().split('T')[0] : today}" class="w-full p-3 border border-gray-300 rounded-xl" required>
-                        </div>
-                        
-                        <div>
-                            <label for="amount" class="text-sm text-gray-500 block mb-1">金額</label>
-                            <input type="number" id="amount" name="amount" value="${initialAmount}" 
-                                class="w-full p-3 text-2xl font-bold text-accent border border-gray-300 rounded-xl" required
-                                min="0.01" step="0.01" placeholder="輸入金額">
-                        </div>
-
-                        <div>
-                            <label for="category-id" class="text-sm text-gray-500 block mb-1">分類</label>
-                            <select id="category-id" name="categoryId" class="w-full p-3 border border-gray-300 rounded-xl" required>
-                                <option value="">--- 選擇分類 ---</option>
-                                ${categoryOptions}
-                            </select>
-                        </div>
-
-                        <div id="suggested-tags" class="flex flex-wrap gap-2 min-h-[24px]"></div>
-                        
-                        <div>
-                            <label for="payment-method" class="text-sm text-gray-500 block mb-1">支付方式</label>
-                            <select id="payment-method" name="paymentMethod" class="w-full p-3 border border-gray-300 rounded-xl" required>
-                                ${paymentOptions}
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label for="note" class="text-sm text-gray-500 block mb-1">備註 (可用 # 建立次分類標籤)</label>
-                            <input type="text" id="note" name="note" value="${record.note || ''}" placeholder="例如：晚餐 #外送 #聚餐" class="w-full p-3 border border-gray-300 rounded-xl">
-                        </div>
-                        
-                        <button type="submit" class="w-full p-4 btn-primary font-bold rounded-xl text-lg shadow-md mt-6">
-                            ${isEditing ? '更新紀錄' : '儲存紀錄'}
-                        </button>
-                        
-                        ${isEditing ? `
-                            <button type="button" onclick="window.cancelEdit()" class="w-full p-3 bg-gray-200 text-gray-700 font-bold rounded-xl mt-2">
-                                取消編輯
-                            </button>
-                        ` : ''}
-                    </form>
-                </div>
-            `;
-        }
-        
-        function renderHistoryPage() {
-            if (state.expenses.length === 0) {
-                return `<div class="p-6 text-center pt-20 text-gray-500">尚無支出紀錄。</div>`;
-            }
-
-            const getCategory = (id) => state.categories.find(c => c.id === id) || { name: '未知分類', color: '#ccc' };
-
-            const groupedExpenses = state.expenses.reduce((acc, exp) => {
-                const dateStr = exp.date.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
-                if (!acc[dateStr]) {
-                    acc[dateStr] = [];
-                }
-                acc[dateStr].push(exp);
-                return acc;
-            }, {});
-            
-            const historyListHtml = Object.keys(groupedExpenses).map(dateStr => {
-                const dailyTotal = groupedExpenses[dateStr].reduce((sum, exp) => sum + exp.amount, 0);
-                const recordsHtml = groupedExpenses[dateStr].map(exp => {
-                    const category = getCategory(exp.categoryId);
-                    const noteHtml = (exp.note || '無備註').replace(/(#\S+)/g, '<span class="text-blue-500">$1</span>');
-                    return `
-                        <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
-                            <div class="flex-1 min-w-0">
-                                <p class="font-semibold text-gray-800 flex items-center">
-                                    <span class="inline-block w-2 h-2 mr-2 rounded-full" style="background-color: ${category.color};"></span>
-                                    ${category.name}
-                                </p>
-                                <p class="text-sm text-gray-500 truncate">${noteHtml}</p>
-                            </div>
-                            <div class="text-right ml-4">
-                                <p class="font-bold text-accent">- NT$ ${exp.amount.toLocaleString('zh-TW')}</p>
-                                <p class="text-xs text-gray-400">${exp.paymentMethod}</p>
-                            </div>
-                            <div class="flex space-x-2 ml-4">
-                                <button onclick="window.startEdit('${exp.id}')" class="text-blue-500 hover:text-blue-700 p-1 rounded-full bg-blue-50">✏️</button>
-                                <button onclick="window.confirmDelete('${exp.id}')" class="text-red-500 hover:text-red-700 p-1 rounded-full bg-red-50">🗑️</button>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-
-                return `
-                    <div class="mb-6 p-4 bg-white rounded-xl shadow-sm border border-gray-100">
-                        <div class="flex justify-between items-center pb-2 border-b-2 border-gray-200">
-                            <h3 class="text-lg font-bold text-gray-700">${dateStr}</h3>
-                            <p class="font-bold text-accent">- NT$ ${dailyTotal.toLocaleString('zh-TW')}</p>
-                        </div>
-                        <div class="divide-y divide-gray-100">
-                            ${recordsHtml}
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            return `
-                <div class="p-5 pb-20">
-                    <h1 class="text-3xl font-bold mb-6 text-gray-800">歷史紀錄</h1>
-                    <div id="history-list">${historyListHtml}</div>
-                </div>
-            `;
-        }
-
-        // 修改後的總覽頁面：圓餅圖 + 預算進度
-        function renderSummaryPage() {
-            const today = new Date();
-            const currentYear = today.getFullYear();
-            const currentMonth = today.getMonth(); // 0-11
-            
-            const mode = state.summaryMode; // 'month' or 'year'
-            
-            // 篩選當前區間的支出
-            const filteredExpenses = state.expenses.filter(exp => {
-                const expDate = exp.date;
-                if (mode === 'month') {
-                    return expDate.getFullYear() === currentYear && expDate.getMonth() === currentMonth;
-                } else {
-                    return expDate.getFullYear() === currentYear;
-                }
-            });
-
-            // 計算分類支出
-            const categoryData = {};
-            let totalPeriodExpense = 0;
-            
-            filteredExpenses.forEach(exp => {
-                if (!categoryData[exp.categoryId]) {
-                    categoryData[exp.categoryId] = 0;
-                }
-                categoryData[exp.categoryId] += exp.amount;
-                totalPeriodExpense += exp.amount;
-            });
-
-            // 準備圖表數據
-            const labels = [];
-            const dataPoints = [];
-            const backgroundColors = [];
-
-            state.categories.forEach(cat => {
-                if (categoryData[cat.id] > 0) {
-                    labels.push(cat.name);
-                    dataPoints.push(categoryData[cat.id]);
-                    backgroundColors.push(cat.color || '#ccc');
-                }
-            });
-
-            // 預算進度條 HTML
-            let budgetBarsHtml = '';
-            // 找出有設定預算的分類 (budget > 0)
-            const budgetedCategories = state.categories.filter(c => c.budget && c.budget > 0);
-            
-            if (budgetedCategories.length > 0) {
-                budgetBarsHtml = budgetedCategories.map(cat => {
-                    const spent = categoryData[cat.id] || 0;
-                    // 如果是年模式，預算 x 12 (簡單估算)
-                    const periodBudget = mode === 'year' ? cat.budget * 12 : cat.budget;
-                    const percent = (spent / periodBudget) * 100;
-                    const barColor = percent > 100 ? 'bg-red-500' : (cat.color ? `bg-[${cat.color}]` : 'bg-green-500'); // 這裡簡化，直接用固定色或 Tailwind class
-                    // Tailwind 不支援動態 hex class，所以這裡用 style
-                    const barStyle = `width: ${Math.min(percent, 100)}%; background-color: ${percent > 100 ? '#ef4444' : (cat.color || '#10b981')};`;
-                    const percentText = percent.toFixed(1);
-                    
-                    return `
-                        <div class="mb-4">
-                            <div class="flex justify-between mb-1">
-                                <span class="text-sm font-medium text-gray-700">${cat.name}</span>
-                                <span class="text-sm font-medium text-gray-700">
-                                    ${Math.round(spent).toLocaleString()} / ${periodBudget.toLocaleString()} (${percentText}%)
-                                </span>
-                            </div>
-                            <div class="w-full bg-gray-200 rounded-full h-2.5">
-                                <div class="h-2.5 rounded-full transition-all duration-500" style="${barStyle}"></div>
-                            </div>
-                            ${percent > 100 ? '<p class="text-xs text-red-500 mt-1">已超支</p>' : ''}
-                        </div>
-                    `;
-                }).join('');
-            } else {
-                budgetBarsHtml = '<p class="text-gray-500 text-sm">尚未設定分類預算</p>';
-            }
-
-            // 按鈕樣式
-            const btnClass = (active) => active ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700';
-
-            return `
-                <div class="p-5 pb-20">
-                    <h1 class="text-3xl font-bold mb-6 text-gray-800">支出總覽</h1>
-                    
-                    <!-- 切換按鈕 -->
-                    <div class="flex justify-center mb-6 space-x-4">
-                        <button onclick="window.switchSummaryMode('month')" class="px-4 py-2 rounded-lg font-bold ${btnClass(mode === 'month')}">本月</button>
-                        <button onclick="window.switchSummaryMode('year')" class="px-4 py-2 rounded-lg font-bold ${btnClass(mode === 'year')}">本年</button>
-                    </div>
-
-                    <!-- 圓餅圖區塊 -->
-                    <div class="bg-white p-4 rounded-xl shadow-md mb-8 flex flex-col items-center">
-                        <h2 class="text-xl font-bold mb-4 text-gray-700">${mode === 'month' ? '本月' : '本年'}支出分佈</h2>
-                        ${dataPoints.length > 0 
-                            ? '<div class="w-full h-64 relative"><canvas id="expenseChart"></canvas></div>' 
-                            : '<p class="text-gray-500 py-10">尚無支出資料</p>'}
-                        <p class="mt-4 text-2xl font-bold text-accent">總支出: NT$ ${totalPeriodExpense.toLocaleString()}</p>
-                    </div>
-
-                    <!-- 預算進度區塊 -->
-                    <div class="bg-white p-4 rounded-xl shadow-md">
-                        <h2 class="text-xl font-bold mb-4 text-gray-800">預算執行狀況 (${mode === 'month' ? '月預算' : '年預算估計'})</h2>
-                        ${budgetBarsHtml}
-                    </div>
-                </div>
-            `;
-        }
-
-        // 繪製圖表
-        function updateSummaryChart() {
-            const ctx = document.getElementById('expenseChart');
-            if (!ctx) return;
-
-            // 銷毀舊圖表
-            if (state.chartInstance) {
-                state.chartInstance.destroy();
-            }
-
-            // 重新計算數據 (邏輯與 renderSummaryPage 相同，這裡為了簡單直接從 DOM 讀取或重新計算)
-            // 為了保持一致性，我們再次執行計算邏輯 (理想情況下應該將數據計算分離出來)
-            const today = new Date();
-            const currentYear = today.getFullYear();
-            const currentMonth = today.getMonth(); 
-            const mode = state.summaryMode;
-            
-            const filteredExpenses = state.expenses.filter(exp => {
-                const expDate = exp.date;
-                if (mode === 'month') {
-                    return expDate.getFullYear() === currentYear && expDate.getMonth() === currentMonth;
-                } else {
-                    return expDate.getFullYear() === currentYear;
-                }
-            });
-
-            const categoryData = {};
-            filteredExpenses.forEach(exp => {
-                if (!categoryData[exp.categoryId]) categoryData[exp.categoryId] = 0;
-                categoryData[exp.categoryId] += exp.amount;
-            });
-
-            const labels = [];
-            const dataPoints = [];
-            const backgroundColors = [];
-
-            state.categories.forEach(cat => {
-                if (categoryData[cat.id] > 0) {
-                    labels.push(cat.name);
-                    dataPoints.push(categoryData[cat.id]);
-                    backgroundColors.push(cat.color || '#ccc');
-                }
-            });
-
-            if (dataPoints.length === 0) return;
-
-            state.chartInstance = new Chart(ctx, {
-                type: 'pie',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        data: dataPoints,
-                        backgroundColor: backgroundColors,
-                        borderWidth: 1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                font: { family: "'Zen Maru Gothic', sans-serif" }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        function renderSettingsPage() {
-            const categoryListHtml = state.categories.map(c => {
-                const totalSpent = calculateMonthlySpending(c.id, new Date());
-                const budget = c.budget || 0;
-                const percent = budget > 0 ? (totalSpent / budget) * 100 : 0;
-                const progressBarWidth = Math.min(percent, 100);
-                const progressBarColor = percent >= 100 ? 'bg-red-500' : percent > 70 ? 'bg-orange-500' : 'bg-green-500';
-
-                return `
-                    <div class="bg-white p-4 rounded-xl shadow-sm mb-3 border border-gray-100" data-category-id="${c.id}">
-                        <div class="flex justify-between items-start mb-2">
-                            <div class="flex-1">
-                                <p class="text-lg font-bold flex items-center">
-                                    <span class="inline-block w-3 h-3 mr-2 rounded-full" style="background-color: ${c.color || '#ccc'};"></span>
-                                    ${c.name}
-                                </p>
-                                <p class="text-sm text-gray-500">本月花費: NT$ ${totalSpent.toLocaleString('zh-TW')} / 預算: NT$ ${budget.toLocaleString('zh-TW')}</p>
-                            </div>
-                            <div class="flex space-x-2 ml-4">
-                                <button onclick="window.editCategory('${c.id}')" class="text-blue-500 hover:text-blue-700 p-1">編輯</button>
-                                <button onclick="window.confirmDeleteCategory('${c.id}')" class="text-red-500 hover:text-red-700 p-1">刪除</button>
-                            </div>
-                        </div>
-                        <div class="w-full bg-gray-200 rounded-full h-2.5">
-                            <div class="${progressBarColor} h-2.5 rounded-full" style="width: ${progressBarWidth}%;"></div>
-                        </div>
-                        <p class="text-xs text-right mt-1 text-gray-500">${percent.toFixed(1)}%</p>
-                    </div>
-                `;
-            }).join('');
-
-            const paymentMethodsHtml = state.paymentMethods.map(p => `
-                <span class="inline-block bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full mr-2 mb-2">${p}</span>
-            `).join('');
-
-            return `
-                <div class="p-5 pb-20">
-                    <h1 class="text-3xl font-bold mb-6 text-gray-800">設定與預算</h1>
-                    <button id="logout-btn" class="float-right bg-red-100 text-red-600 px-3 py-1 text-sm rounded-xl font-bold">登出</button>
-                    <h2 class="text-2xl font-bold mb-4 text-green-600">支出分類與預算</h2>
-                    <div id="category-list" class="mb-8">${categoryListHtml}</div>
-                    <button onclick="window.openAddCategoryModal()" class="w-full p-3 bg-blue-100 text-blue-600 font-bold rounded-xl mb-8">+ 新增/編輯分類</button>
-                    <h2 class="text-2xl font-bold mb-4 text-gray-800">支付方式 (待實作編輯)</h2>
-                    <div class="mb-6">${paymentMethodsHtml}</div>
-                    <p class="text-sm text-gray-500">用戶ID: ${userId}</p>
-                </div>
-            `;
-        }
-
-        function renderApp() {
-            let contentHtml = '';
-            const page = state.currentPage;
-            if (!isAuthReady) {
-                 contentHtml = `<div class="p-10 text-center text-gray-500 pt-20">載入中...</div>`;
-            } else if (page === 'login' || !userId) {
-                contentHtml = renderLoginPage();
-            } else {
-                switch (page) {
-                    case 'quickLog': contentHtml = renderQuickLogPage(); break;
-                    case 'history': contentHtml = renderHistoryPage(); break;
-                    case 'summary': contentHtml = renderSummaryPage(); break;
-                    case 'settings': contentHtml = renderSettingsPage(); break;
-                    default: contentHtml = renderQuickLogPage();
-                }
-            }
-            appElement.innerHTML = `
-                <div class="relative w-full h-full">
-                    ${contentHtml}
-                    ${renderNavBar()}
-                </div>
-            `;
-            modalContainer.innerHTML = '';
-            attachEventListeners(page);
-
-            // 如果是總覽頁面，繪製圖表
-            if (page === 'summary') {
-                updateSummaryChart();
-            }
-        }
-
-        // --- 事件監聽器與處理函數 ---
-
-        function attachEventListeners(page) {
-            if (page === 'login') {
-                document.getElementById('login-btn')?.addEventListener('click', handleLogin);
-                document.getElementById('signup-btn')?.addEventListener('click', handleSignUp);
-            }
-            if (page === 'quickLog') {
-                const form = document.getElementById('expense-form');
-                if (form) form.addEventListener('submit', handleExpenseFormSubmit);
+            if (!this.isLoggedIn) {
+                container.innerHTML = this.renderAuthUI();
                 
-                const categorySelect = document.getElementById('category-id');
-                if (categorySelect) {
-                    categorySelect.addEventListener('change', (e) => {
-                        renderSuggestedTags(e.target.value);
-                    });
-                    if (categorySelect.value) {
-                        renderSuggestedTags(categorySelect.value);
-                    }
+                // Attach Auth form handlers *after* rendering Auth UI
+                const authForm = document.getElementById('login-form') || document.getElementById('register-form');
+                if (authForm) {
+                    // We must clear existing listener to prevent stacking if render() is called multiple times without logout
+                    authForm.removeEventListener('submit', this.boundAuthFormHandler);
+                    this.boundAuthFormHandler = (e) => this.handleAuthSubmit(e);
+                    authForm.addEventListener('submit', this.boundAuthFormHandler);
                 }
-            }
-            if (page === 'settings') {
-                document.getElementById('logout-btn')?.addEventListener('click', handleLogout);
-            }
-        }
 
-        async function handleLogin() {
-            const email = document.getElementById('email-input').value;
-            const password = document.getElementById('password-input').value;
-            if (!email || !password) return showToast('請輸入郵件和密碼', 'error');
+                return;
+            }
+
+            // Render navigation bar for logged-in users
+            const navBar = `
+                <div class="flex justify-between items-center mb-6">
+                    <nav class="flex border-b border-gray-200 flex-grow mr-4">
+                        <button onclick="app.setPage('log')" id="tab-log"
+                                class="flex-1 py-3 text-center transition duration-150 ease-in-out border-b-2 text-sm md:text-base">
+                            新增潛水紀錄
+                        </button>
+                        <button onclick="app.setPage('history')" id="tab-history"
+                                class="flex-1 py-3 text-center transition duration-150 ease-in-out border-b-2 text-sm md:text-base">
+                            歷史紀錄與管理
+                        </button>
+                        <button onclick="app.setPage('info')" id="tab-info"
+                                class="flex-1 py-3 text-center transition duration-150 ease-in-out border-b-2 text-sm md:text-base">
+                            潛水員/裝備管理
+                        </button>
+                    </nav>
+                    <button onclick="app.handleLogout()" class="py-2 px-3 text-xs bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition duration-150">
+                        登出
+                    </button>
+                </div>
+            `;
+            
+            container.innerHTML = navBar + `<div id="main-content-area"></div>`;
+            const contentArea = document.getElementById('main-content-area');
+            
+            this.updateTabs(); // Ensure tabs are highlighted correctly
+
+            switch (this.currentPage) {
+                case 'log':
+                    contentArea.innerHTML = this.renderLogEntryForm();
+                    // Attach listeners for the log form after rendering
+                    const logForm = document.getElementById('new-log-form');
+                    if(logForm) logForm.addEventListener('submit', this.handleNewLogSubmit.bind(this));
+                    
+                    document.getElementById('dive-mode').addEventListener('change', this.toggleNitroxInput);
+                    this.toggleNitroxInput();
+                    // Add listeners for SAC calculation
+                    ['depth_m', 'avg_depth_m', 'time_min', 'air_start_bar', 'air_end_bar', 'tank_volume_l'].forEach(id => {
+                        const input = document.getElementById(id);
+                        if(input) input.addEventListener('input', this.calculateAndDisplaySAC.bind(this));
+                    });
+                    this.calculateAndDisplaySAC();
+                    break;
+                case 'history':
+                    contentArea.innerHTML = this.renderHistoryTable();
+                    break;
+                case 'info':
+                    contentArea.innerHTML = this.renderInfoAndGearManager();
+                    this.renderGearList();
+                    this.renderCertifications();
+                    break;
+            }
+        },
+        
+        // --- Authentication UI ---
+
+        renderAuthUI() {
+            // ... (Authentication UI rendering remains the same) ...
+            const isLogin = this.authMode === 'login';
+            const title = isLogin ? '潛水日誌登入' : '註冊新帳號';
+            const buttonText = isLogin ? '登入' : '註冊';
+
+            return `
+                <div class="max-w-md mx-auto p-6 bg-gray-50 rounded-lg shadow-md mt-8">
+                    <h2 class="text-2xl font-bold text-gray-800 text-center mb-6">${title}</h2>
+                    
+                    ${this.authError ? `<div class="p-3 mb-4 text-sm text-red-700 bg-red-100 rounded-lg" role="alert">${this.authError}</div>` : ''}
+
+                    <form id="${isLogin ? 'login-form' : 'register-form'}" class="space-y-4">
+                        <div>
+                            <label for="auth_email" class="block text-sm font-medium text-gray-700">電子郵件</label>
+                            <input type="email" id="auth_email" name="email" required placeholder="your@email.com">
+                        </div>
+                        <div>
+                            <label for="auth_password" class="block text-sm font-medium text-gray-700">密碼</label>
+                            <input type="password" id="auth_password" name="password" required placeholder="至少 6 個字元">
+                        </div>
+                        ${!isLogin ? `
+                        <div>
+                            <label for="auth_password_confirm" class="block text-sm font-medium text-gray-700">確認密碼</label>
+                            <input type="password" id="auth_password_confirm" name="password_confirm" required placeholder="再次輸入密碼">
+                        </div>
+                        ` : ''}
+                        
+                        <button type="submit" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition duration-150">
+                            ${buttonText}
+                        </button>
+                    </form>
+                    
+                    <div class="mt-6 text-center">
+                        ${isLogin ? `
+                            <p class="text-sm text-gray-600">
+                                還沒有帳號嗎？
+                                <button type="button" onclick="app.setAuthMode('register')" class="text-indigo-600 hover:text-indigo-800 font-medium">
+                                    立即註冊
+                                </button>
+                            </p>
+                        ` : `
+                            <p class="text-sm text-gray-600">
+                                已經有帳號了？
+                                <button type="button" onclick="app.setAuthMode('login')" class="text-indigo-600 hover:text-indigo-800 font-medium">
+                                    返回登入
+                                </button>
+                            </p>
+                        `}
+                    </div>
+                </div>
+            `;
+        },
+
+        // --- Authentication Handlers (Remains the same) ---
+
+        handleAuthSubmit(event) {
+            event.preventDefault();
+            const form = event.target;
+            const email = form.auth_email.value;
+            const password = form.auth_password.value;
+
+            if (form.id === 'login-form') {
+                this.handleLogin(email, password);
+            } else if (form.id === 'register-form') {
+                const passwordConfirm = form.auth_password_confirm.value;
+                if (password !== passwordConfirm) {
+                    this.authError = '兩次輸入的密碼不一致，請重新檢查。';
+                    this.render();
+                    return;
+                }
+                this.handleRegister(email, password);
+            }
+        },
+
+        async handleLogin(email, password) {
+            this.authError = '';
             try {
                 await signInWithEmailAndPassword(auth, email, password);
-                showToast('登入成功！', 'success');
+                // AuthStateChange listener handles navigation
             } catch (error) {
-                console.error("登入失敗:", error);
-                showToast('登入失敗: ' + error.message, 'error');
+                console.error("Login failed:", error);
+                let message = '登入失敗，請檢查電子郵件或密碼是否正確。';
+                if (error.code === 'auth/invalid-email') message = '電子郵件格式不正確。';
+                if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') message = '使用者不存在或密碼錯誤。';
+                this.authError = message;
+                this.render();
             }
-        }
+        },
 
-        async function handleSignUp() {
-            const email = document.getElementById('email-input').value;
-            const password = document.getElementById('password-input').value;
-            if (password.length < 6) return showToast('密碼長度需至少為 6 位', 'error');
+        async handleRegister(email, password) {
+            this.authError = '';
             try {
                 await createUserWithEmailAndPassword(auth, email, password);
-                showToast('註冊成功！已自動登入。', 'success');
+                // AuthStateChange listener handles navigation
             } catch (error) {
-                console.error("註冊失敗:", error);
-                showToast('註冊失敗: ' + error.message, 'error');
+                console.error("Registration failed:", error);
+                let message = '註冊失敗。';
+                if (error.code === 'auth/weak-password') message = '密碼強度不足，請使用至少 6 個字元的密碼。';
+                if (error.code === 'auth/email-already-in-use') message = '此電子郵件已被註冊。';
+                this.authError = message;
+                this.render();
             }
-        }
+        },
 
-        async function handleLogout() {
+        async handleLogout() {
             try {
                 await signOut(auth);
-                showToast('登出成功', 'success');
-                navigate('login');
+                // AuthStateChange listener handles navigation
             } catch (error) {
-                console.error("登出失敗:", error);
-                showToast('登出失敗: ' + error.message, 'error');
+                console.error("Logout failed:", error);
             }
-        }
-
-        function handleExpenseFormSubmit(e) {
-            e.preventDefault();
-            const form = e.target;
-            const recordId = form.elements['record-id'].value;
-            const amountVal = form.elements['amount'].value;
-            const parsedAmount = parseFloat(amountVal);
-            if (parsedAmount <= 0 || isNaN(parsedAmount)) {
-                 return showToast('金額必須是有效的數字且大於 0', 'error');
-            }
-            const expenseData = {
-                date: form.elements['date'].value,
-                amount: parsedAmount,
-                categoryId: form.elements['categoryId'].value,
-                paymentMethod: form.elements['paymentMethod'].value,
-                note: form.elements['note'].value.trim(),
-            };
-            saveExpense(expenseData, recordId || null);
-            if (!recordId) {
-                form.reset();
-                form.elements['date'].value = new Date().toISOString().split('T')[0];
-                form.elements['amount'].value = '';
-                document.getElementById('suggested-tags').innerHTML = '';
-            }
-        }
-
-        // 全域函數定義
-        window.navigate = navigate;
-        window.switchSummaryMode = switchSummaryMode;
+        },
         
-        window.startEdit = (recordId) => {
-            const record = state.expenses.find(e => e.id === recordId);
-            if (record) {
-                state.isEditing = true;
-                state.editRecord = { ...record };
-                navigate('quickLog');
+        // --- SAC Calculation Logic (Remains the same) ---
+
+        calculateSAC(avgDepthM, timeMin, startBar, endBar, tankVolumeL) {
+            if (!avgDepthM || !timeMin || !startBar || !endBar || timeMin <= 0 || startBar <= endBar) {
+                return null;
             }
-        };
 
-        window.cancelEdit = () => {
-            state.isEditing = false;
-            state.editRecord = null;
-            navigate('quickLog');
-        };
+            // tankVolumeL is optional in the formula if calculating rock bottom, but required for SAC
+            if (!tankVolumeL) return null;
 
-        window.confirmDelete = (recordId) => {
-            showModal(
-                '確認刪除',
-                '您確定要刪除這筆支出紀錄嗎？',
-                () => deleteExpense(recordId)
-            );
-        };
-        
-        window.openAddCategoryModal = (category = null) => {
-            const isEditing = !!category;
-            const id = category ? category.id : '';
-            const name = category ? category.name : '';
-            const budget = category ? category.budget : 0;
-            const color = category ? category.color : '#4CAF50';
-            const modalContent = `
-                <div class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-                    <form id="category-form" class="bg-white p-6 rounded-xl shadow-2xl w-11/12 max-w-sm">
-                        <h3 class="text-xl font-bold mb-4">${isEditing ? '編輯分類' : '新增分類'}</h3>
-                        <input type="hidden" id="cat-id" value="${id}">
-                        <label class="block mb-2 text-sm text-gray-600">分類名稱</label>
-                        <input type="text" id="cat-name" value="${name}" placeholder="例如：餐飲" class="w-full p-3 mb-4 border border-gray-300 rounded-xl" required>
-                        <label class="block mb-2 text-sm text-gray-600">每月預算 (NT$)</label>
-                        <input type="number" id="cat-budget" value="${budget}" min="0" step="100" class="w-full p-3 mb-4 border border-gray-300 rounded-xl" required>
-                        <label class="block mb-2 text-sm text-gray-600">代表顏色</label>
-                        <input type="color" id="cat-color" value="${color}" class="w-full h-10 p-1 mb-6 border border-gray-300 rounded-xl">
-                        <div class="flex justify-end space-x-3">
-                            <button type="button" onclick="document.getElementById('modal-container').innerHTML=''" class="px-4 py-2 text-gray-600 bg-gray-200 rounded-lg">取消</button>
-                            <button type="submit" class="px-4 py-2 text-white btn-primary rounded-lg">${isEditing ? '儲存變更' : '新增'}</button>
+            const pressureUsed = startBar - endBar; // bar
+            const avgPressureAtm = (avgDepthM / 10) + 1; // ATA (Atmospheres Absolute)
+            const volumeUsed = pressureUsed * tankVolumeL; // Bar-Liters
+
+            // SAC = (Volume Used / Time) / Avg Pressure
+            const sac = (volumeUsed / timeMin) / avgPressureAtm;
+            
+            return sac; // L/min
+        },
+
+        calculateAndDisplaySAC() {
+            const avgDepthInput = document.getElementById('avg_depth_m');
+            const timeInput = document.getElementById('time_min');
+            const startInput = document.getElementById('air_start_bar');
+            const endInput = document.getElementById('air_end_bar');
+            const volumeInput = document.getElementById('tank_volume_l');
+            const resultElement = document.getElementById('sac-result');
+            
+            if (!resultElement) return; 
+
+            const avgDepthM = parseFloat(avgDepthInput?.value);
+            const timeMin = parseInt(timeInput?.value, 10);
+            const startBar = parseInt(startInput?.value, 10);
+            const endBar = parseInt(endInput?.value, 10);
+            const tankVolumeL = parseFloat(volumeInput?.value);
+
+            const sacValue = this.calculateSAC(avgDepthM, timeMin, startBar, endBar, tankVolumeL);
+
+            if (sacValue !== null && !isNaN(sacValue) && sacValue > 0) {
+                resultElement.innerHTML = `
+                    <p class="text-lg font-bold text-teal-600">
+                        SAC 率 (Surface Air Consumption Rate): 
+                        <span class="text-2xl">${sacValue.toFixed(2)} L/min</span>
+                    </p>
+                    <p class="text-sm text-gray-500 mt-1">
+                        **SAC 壓力消耗率：**
+                        <span class="font-bold">${((sacValue / tankVolumeL) * 10).toFixed(2)} Bar/min (約為每米深度消耗的 Bar)</span>
+                    </p>
+                    <p class="text-xs text-gray-400 mt-1">
+                        計算公式: SAC = [(起始壓力 - 結束壓力) * 氣瓶容積] / [潛水時間 * 平均深度絕對壓力]
+                    </p>
+                `;
+                resultElement.classList.remove('text-gray-500');
+            } else {
+                resultElement.innerHTML = `
+                    <p class="text-gray-500">
+                        請輸入所有潛水數據 (深度、時間、壓力、容積) 且起始壓力需大於結束壓力以計算 SAC 率。
+                    </p>
+                `;
+            }
+        },
+
+        // --- View Rendering Functions (UPDATED) ---
+
+        renderLogEntryForm(log = null) {
+            const isEdit = !!log;
+            const title = isEdit ? '修改潛水紀錄' : '新增潛水紀錄';
+            const buttonText = isEdit ? '儲存變更' : '新增紀錄';
+            
+            // Default values for new log or values from existing log
+            const logDate = log ? log.date : new Date().toISOString().substring(0, 10);
+            const entryTime = log ? (log.entryTime || '') : '';
+            const exitTime = log ? (log.exitTime || '') : '';
+            const diveType = log ? (log.diveType || '岸潛') : '岸潛';
+            const waveCondition = log ? (log.waveCondition || '') : '';
+            const currentCondition = log ? (log.currentCondition || '') : '';
+            const weather = log ? (log.weather || '') : '';
+            const mode = log ? log.mode : 'Air';
+            const o2_percent = log ? log.o2_percent : '21';
+            const avg_depth_m = log ? log.avg_depth_m : '';
+            const tank_volume_l = log ? log.tank_volume_l : '12.0'; // Default to a standard 12L tank
+
+            // Gear checkboxes rendering
+            const gearCheckboxes = this.gearList.map(gear => {
+                const isChecked = log && log.gear_used && log.gear_used.includes(gear.name);
+                return `
+                    <label class="flex items-center space-x-2 text-gray-700">
+                        <input type="checkbox" name="gear_used" value="${gear.name}" class="rounded text-teal-500 focus:ring-teal-500" ${isChecked ? 'checked' : ''}>
+                        <span>${gear.name}</span>
+                    </label>
+                `;
+            }).join('');
+
+
+            return `
+                <form id="${isEdit ? 'edit-log-form' : 'new-log-form'}" class="space-y-4 p-4 md:p-6 bg-white rounded-lg shadow-md">
+                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">${title}</h2>
+
+                    <!-- 基本資訊與潛點 -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label for="date" class="block text-sm font-medium text-gray-700">潛水日期</label>
+                            <input type="date" id="date" name="date" required value="${logDate}">
                         </div>
-                    </form>
+                        <div class="space-y-1">
+                            <label for="location" class="block text-sm font-medium text-gray-700">潛點名稱</label>
+                            <input type="text" id="location" name="location" required placeholder="如：綠島大白沙" value="${log ? log.location : ''}">
+                        </div>
+                    </div>
+
+                    <!-- 1. 入水時間和出水時間 (NEW) -->
+                    <h3 class="text-xl font-medium text-gray-700 mt-6 pt-4 border-t">時間與類型</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label for="entryTime" class="block text-sm font-medium text-gray-700">入水時間</label>
+                            <input type="datetime-local" id="entryTime" name="entryTime" required value="${entryTime}">
+                        </div>
+                        <div class="space-y-1">
+                            <label for="exitTime" class="block text-sm font-medium text-gray-700">出水時間</label>
+                            <input type="datetime-local" id="exitTime" name="exitTime" required value="${exitTime}">
+                        </div>
+                    </div>
+
+                    <!-- 2. 潛水類型 (NEW) -->
+                    <div class="space-y-1 mt-4">
+                        <label class="block text-sm font-medium text-gray-700">潛水類型</label>
+                        <div class="flex space-x-6 p-2 bg-gray-50 rounded-md">
+                            <label class="flex items-center">
+                                <input type="radio" name="diveType" value="岸潛" class="h-4 w-4 text-teal-600 border-gray-300 focus:ring-teal-500" ${diveType === '岸潛' ? 'checked' : ''} required>
+                                <span class="ml-2 text-sm text-gray-700">岸潛 (Shore Dive)</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="diveType" value="船潛" class="h-4 w-4 text-teal-600 border-gray-300 focus:ring-teal-500" ${diveType === '船潛' ? 'checked' : ''} required>
+                                <span class="ml-2 text-sm text-gray-700">船潛 (Boat Dive)</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- 3, 4, 5. 浪況、流況、天氣 (NEW) -->
+                    <h3 class="text-xl font-medium text-gray-700 mt-6 pt-4 border-t">環境狀況</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div class="space-y-1">
+                            <label for="waveCondition" class="block text-sm font-medium text-gray-700">浪況</label>
+                            <select id="waveCondition" name="waveCondition" class="mt-1 block w-full" required>
+                                <option value="" ${!waveCondition ? 'selected' : ''} disabled>請選擇</option>
+                                <option value="無浪" ${waveCondition === '無浪' ? 'selected' : ''}>無浪</option>
+                                <option value="微浪" ${waveCondition === '微浪' ? 'selected' : ''}>微浪</option>
+                                <option value="小至中浪" ${waveCondition === '小至中浪' ? 'selected' : ''}>小至中浪</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1">
+                            <label for="currentCondition" class="block text-sm font-medium text-gray-700">流況</label>
+                            <select id="currentCondition" name="currentCondition" class="mt-1 block w-full" required>
+                                <option value="" ${!currentCondition ? 'selected' : ''} disabled>請選擇</option>
+                                <option value="無流" ${currentCondition === '無流' ? 'selected' : ''}>無流</option>
+                                <option value="微流" ${currentCondition === '微流' ? 'selected' : ''}>微流</option>
+                                <option value="小至中流" ${currentCondition === '小至中流' ? 'selected' : ''}>小至中流</option>
+                                <option value="中至大流" ${currentCondition === '中至大流' ? 'selected' : ''}>中至大流</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1">
+                            <label for="weather" class="block text-sm font-medium text-gray-700">天氣</label>
+                            <select id="weather" name="weather" class="mt-1 block w-full" required>
+                                <option value="" ${!weather ? 'selected' : ''} disabled>請選擇</option>
+                                <option value="晴朗無雲" ${weather === '晴朗無雲' ? 'selected' : ''}>晴朗無雲</option>
+                                <option value="陰天多雲" ${weather === '陰天多雲' ? 'selected' : ''}>陰天多雲</option>
+                                <option value="雨" ${weather === '雨' ? 'selected' : ''}>雨</option>
+                            </select>
+                        </div>
+                    </div>
+
+
+                    <!-- 深度與時間資訊 (Existing Fields) -->
+                    <h3 class="text-xl font-medium text-gray-700 mt-6 pt-4 border-t">深度與氣體資訊</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="space-y-1 relative">
+                            <label for="depth_m" class="block text-sm font-medium text-gray-700">最大深度</label>
+                            <input type="number" id="depth_m" name="depth_m" required placeholder="0.0" step="0.1" min="0" value="${log ? log.depth_m : ''}">
+                            <span class="metric-unit">公尺 (m)</span>
+                        </div>
+                        <div class="space-y-1 relative">
+                            <label for="avg_depth_m" class="block text-sm font-medium text-gray-700">平均深度</label>
+                            <input type="number" id="avg_depth_m" name="avg_depth_m" required placeholder="0.0" step="0.1" min="0" value="${avg_depth_m}">
+                            <span class="metric-unit">公尺 (m)</span>
+                        </div>
+                        <div class="space-y-1 relative">
+                            <label for="time_min" class="block text-sm font-medium text-gray-700">潛水時間</label>
+                            <input type="number" id="time_min" name="time_min" required placeholder="0" min="1" value="${log ? log.time_min : ''}">
+                            <span class="metric-unit">分鐘 (min)</span>
+                        </div>
+                        <div class="space-y-1 relative">
+                            <label for="tank_volume_l" class="block text-sm font-medium text-gray-700">氣瓶容積</label>
+                            <input type="number" id="tank_volume_l" name="tank_volume_l" required placeholder="12.0" step="0.1" min="1" value="${tank_volume_l}">
+                            <span class="metric-unit">公升 (L)</span>
+                        </div>
+                    </div>
+
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="space-y-1 relative">
+                            <label for="air_start_bar" class="block text-sm font-medium text-gray-700">氣瓶起始壓力</label>
+                            <input type="number" id="air_start_bar" name="air_start_bar" required placeholder="200" min="0" value="${log ? log.air_start_bar : ''}">
+                            <span class="metric-unit">bar</span>
+                        </div>
+                        <div class="space-y-1 relative">
+                            <label for="air_end_bar" class="block text-sm font-medium text-gray-700">氣瓶結束壓力</label>
+                            <input type="number" id="air_end_bar" name="air_end_bar" required placeholder="50" min="0" value="${log ? log.air_end_bar : ''}">
+                            <span class="metric-unit">bar</span>
+                        </div>
+                        <div class="space-y-1">
+                            <label for="dive-mode" class="block text-sm font-medium text-gray-700">潛水模式</label>
+                            <select id="dive-mode" name="mode" class="mt-1 block w-full">
+                                <option value="Air" ${mode === 'Air' ? 'selected' : ''}>空氣 (Air)</option>
+                                <option value="Nitrox" ${mode === 'Nitrox' ? 'selected' : ''}>高氧 (Nitrox)</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1 relative" id="nitrox-input-group">
+                            <label for="o2_percent" class="block text-sm font-medium text-gray-700">高氧 O₂ %</label>
+                            <input type="number" id="o2_percent" name="o2_percent" placeholder="21-100" min="21" max="100" value="${o2_percent}">
+                            <span class="metric-unit">%</span>
+                        </div>
+                    </div>
+
+                    <!-- SAC Calculation Result Display -->
+                    <div id="sac-result" class="bg-blue-50 p-4 rounded-lg border-l-4 border-blue-400 mt-6 transition duration-150 ease-in-out">
+                        <!-- SAC result will be displayed here -->
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="space-y-1 relative">
+                            <label for="water_temp_c" class="block text-sm font-medium text-gray-700">水溫</label>
+                            <input type="number" id="water_temp_c" name="water_temp_c" placeholder="0.0" step="0.1" value="${log ? log.water_temp_c : ''}">
+                            <span class="metric-unit">°C</span>
+                        </div>
+                        <div class="space-y-1 relative">
+                            <label for="visibility_m" class="block text-sm font-medium text-gray-700">能見度</label>
+                            <input type="number" id="visibility_m" name="visibility_m" placeholder="0" min="0" value="${log ? log.visibility_m : ''}">
+                            <span class="metric-unit">公尺 (m)</span>
+                        </div>
+                    </div>
+
+
+                    <div class="space-y-1">
+                        <label class="block text-sm font-medium text-gray-700">個人裝備 (勾選本次使用的裝備)</label>
+                        <div id="gear-checkbox-container" class="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-gray-50 rounded-md border border-gray-200">
+                            ${gearCheckboxes || '<p class="col-span-3 text-sm text-gray-500">請先在潛水員/裝備管理頁面新增您的個人裝備。</p>'}
+                        </div>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label for="notes" class="block text-sm font-medium text-gray-700">潛水筆記/備註</label>
+                        <textarea id="notes" name="notes" rows="3" placeholder="紀錄潛水心得、看到的海生物等..." class="mt-1 block w-full">${log ? log.notes : ''}</textarea>
+                    </div>
+
+                    <div class="flex justify-end space-x-3 mt-6">
+                        ${isEdit ? '<button type="button" onclick="app.closeModal()" class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">取消</button>' : ''}
+                        <button type="submit" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500">
+                            ${buttonText}
+                        </button>
+                    </div>
+                </form>
+            `;
+        },
+
+        renderHistoryTable() {
+            // ... (History table rendering remains the same) ...
+            if (this.diveLogs.length === 0) {
+                return `<div class="text-center py-8 text-gray-500">尚無潛水紀錄。請新增您的第一次潛水！</div>`;
+            }
+
+            // Calculate average SAC for display
+            const validLogs = this.diveLogs.filter(l => l.avg_sac_l_min);
+            const totalSac = validLogs.reduce((sum, l) => sum + l.avg_sac_l_min, 0);
+            const avgSac = validLogs.length > 0 ? totalSac / validLogs.length : 0;
+
+
+            const rows = this.diveLogs.sort((a, b) => new Date(b.date) - new Date(a.date)).map(log => {
+                const sacDisplay = log.avg_sac_l_min ? `${log.avg_sac_l_min.toFixed(2)} L/min` : 'N/A';
+                return `
+                    <tr class="border-b hover:bg-gray-50 transition duration-150 ease-in-out">
+                        <td class="px-3 py-3 whitespace-nowrap text-sm font-medium text-gray-900">${log.date}</td>
+                        <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-700">${log.location}</td>
+                        <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-700">${log.depth_m} / ${log.avg_depth_m || '?'} m</td>
+                        <td class="px-3 py-3 whitespace-nowrap text-sm text-gray-700">${log.time_min} min</td>
+                        <td class="px-3 py-3 whitespace-nowrap text-sm text-blue-700">${sacDisplay}</td>
+                        <td class="px-3 py-3 whitespace-nowrap text-right text-sm font-medium">
+                            <button onclick="app.openEditModal('${log.id}')" class="text-indigo-600 hover:text-indigo-900 mx-1">
+                                編輯
+                            </button>
+                            <button onclick="app.openDeleteModal('${log.id}')" class="text-red-600 hover:text-red-900 mx-1">
+                                刪除
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            return `
+                <div class="overflow-x-auto shadow-md rounded-lg">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">日期</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">潛點</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">最大/平均深度</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">時間</th>
+                                <th class="px-3 py-3 text-left text-xs font-medium text-blue-600 uppercase tracking-wider">SAC (L/min)</th>
+                                <th class="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${rows}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 flex justify-between text-sm text-gray-600">
+                    <div>
+                        總計潛水次數：<span class="font-bold">${this.diveLogs.length}</span>
+                        ${userId ? `<span class="ml-4 text-xs text-gray-400">用戶 ID: ${userId}</span>` : ''}
+                    </div>
+                    <div class="text-right">
+                        平均 SAC 率 (L/min)：<span class="font-bold text-blue-700">${avgSac.toFixed(2)}</span>
+                    </div>
                 </div>
             `;
-            modalContainer.innerHTML = modalContent;
-            document.getElementById('category-form').addEventListener('submit', handleCategoryFormSubmit);
-        };
+        },
         
-        window.editCategory = (categoryId) => {
-            const category = state.categories.find(c => c.id === categoryId);
-            if (category) window.openAddCategoryModal(category);
-        };
+        // ... (renderInfoAndGearManager, renderCertifications, renderGearList - same as previous version) ...
 
-        function handleCategoryFormSubmit(e) {
-            e.preventDefault();
-            const form = e.target;
-            const id = form.elements['cat-id'].value || crypto.randomUUID();
-            const name = form.elements['cat-name'].value;
-            const budget = parseInt(form.elements['cat-budget'].value, 10);
-            const color = form.elements['cat-color'].value;
-            let newCategories = [...state.categories];
-            const existingIndex = newCategories.findIndex(c => c.id === id);
-            const newCategoryData = { id, name, budget, color };
-            if (existingIndex !== -1) {
-                newCategories[existingIndex] = newCategoryData;
-            } else {
-                newCategories.push(newCategoryData);
+        renderInfoAndGearManager() {
+            const totalDives = this.diveLogs.length;
+
+            return `
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- 潛水員證照管理 -->
+                    <div class="bg-white p-6 rounded-lg shadow-md space-y-4">
+                        <h2 class="text-2xl font-semibold text-gray-800 border-b pb-2 mb-4">潛水員證照管理</h2>
+
+                        <div class="bg-teal-50 p-4 rounded-md flex items-center justify-between">
+                            <span class="text-lg font-medium text-teal-800">總潛水次數</span>
+                            <span class="text-3xl font-bold text-teal-600">${totalDives}</span>
+                        </div>
+                        
+                        <h3 class="text-xl font-medium text-gray-700 mt-4 border-t pt-4">新增證照</h3>
+                        <form id="new-certification-form" class="space-y-3">
+                            <div>
+                                <label for="cert_agency" class="block text-sm font-medium text-gray-700">發證單位</label>
+                                <input type="text" id="cert_agency" name="agency" placeholder="如: PADI / SSI" required class="mt-1 block w-full">
+                            </div>
+                            <div>
+                                <label for="cert_level" class="block text-sm font-medium text-gray-700">證照等級</label>
+                                <input type="text" id="cert_level" name="level" placeholder="如: Advanced Open Water" required class="mt-1 block w-full">
+                            </div>
+                            <div>
+                                <label for="cert_number" class="block text-sm font-medium text-gray-700">證照編號</label>
+                                <input type="text" id="cert_number" name="number" placeholder="輸入您的證照號碼" class="mt-1 block w-full">
+                            </div>
+                            <div>
+                                <label for="cert_date" class="block text-sm font-medium text-gray-700">取得日期</label>
+                                <input type="date" id="cert_date" name="date" class="mt-1 block w-full">
+                            </div>
+                            <div class="pt-2">
+                                <button type="submit" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700">
+                                    新增證照
+                                </button>
+                            </div>
+                        </form>
+
+                        <div id="certifications-list-container" class="space-y-2 pt-4 border-t mt-4">
+                            <h3 class="text-xl font-medium text-gray-700">現有證照</h3>
+                            <!-- Certifications list will be rendered here -->
+                        </div>
+                    </div>
+
+                    <!-- 個人裝備管理 -->
+                    <div class="bg-white p-6 rounded-lg shadow-md space-y-4">
+                        <h2 class="text-2xl font-semibold text-gray-800 border-b pb-2 mb-4">個人裝備管理</h2>
+
+                        <form id="new-gear-form" class="flex space-x-2">
+                            <input type="text" id="new_gear_name" name="name" placeholder="輸入裝備名稱，如：Mares X-Stream 蛙鞋" required class="flex-grow">
+                            <button type="submit" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700">
+                                新增裝備
+                            </button>
+                        </form>
+
+                        <div id="gear-list-container" class="space-y-2 pt-4">
+                            <!-- Gear items will be rendered here -->
+                        </div>
+                    </div>
+                </div>
+            `;
+        },
+
+        renderCertifications() {
+            const container = document.getElementById('certifications-list-container');
+            if (!container) return;
+            
+            // Only render the list part inside the container
+            const listContainer = document.createElement('div');
+            listContainer.className = "space-y-2";
+
+            if (this.certifications.length === 0) {
+                listContainer.innerHTML = '<p class="text-sm text-gray-500">您尚未新增任何證照紀錄。</p>';
+                container.innerHTML = listContainer.outerHTML; // Replace innerHTML with the new structure
+                return;
             }
-            updateCategories(newCategories);
-            document.getElementById('modal-container').innerHTML = '';
-        }
 
-        window.confirmDeleteCategory = (categoryId) => {
-            showModal(
-                '確認刪除分類',
-                '刪除分類不會刪除相關紀錄，但紀錄將顯示為「未知分類」。確定要刪除嗎？',
-                () => {
-                    const newCategories = state.categories.filter(c => c.id !== categoryId);
-                    updateCategories(newCategories);
-                }
-            );
-        };
+            const list = this.certifications.map(cert => `
+                <div class="flex justify-between items-start p-3 bg-gray-50 border border-gray-200 rounded-md">
+                    <div class="flex flex-col">
+                        <span class="text-lg font-semibold text-gray-800">${cert.level} (${cert.agency})</span>
+                        <span class="text-sm text-gray-600">編號: ${cert.number || '無'}</span>
+                        <span class="text-xs text-gray-500">取得日期: ${cert.date || '無'}</span>
+                    </div>
+                    <button onclick="app.deleteCertification('${cert.id}')" class="text-red-500 hover:text-red-700 text-sm p-1 rounded-full hover:bg-red-100 transition duration-150 flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 10-2 0v6a1 1 0 102 0V8z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+            `).join('');
+
+            listContainer.innerHTML = list;
+            // Clear and re-append the list to the main container
+            const existingList = container.querySelector('.space-y-2');
+            if(existingList) existingList.remove();
+            container.appendChild(listContainer);
+        },
+
+        renderGearList() {
+            const container = document.getElementById('gear-list-container');
+            if (!container) return;
+
+            if (this.gearList.length === 0) {
+                container.innerHTML = '<p class="text-sm text-gray-500">您尚未新增任何裝備。</p>';
+                return;
+            }
+
+            const list = this.gearList.map(gear => `
+                <div class="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 rounded-md">
+                    <span class="text-gray-800">${gear.name}</span>
+                    <button onclick="app.deleteGear('${gear.id}')" class="text-red-500 hover:text-red-700 text-sm p-1 rounded-full hover:bg-red-100 transition duration-150">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 10-2 0v6a1 1 0 102 0V8z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+            `).join('');
+
+            container.innerHTML = list;
+        },
+
+
+        // --- Utility & Modal Functions (Same as previous version) ---
+
+        toggleNitroxInput() {
+            const modeSelect = document.getElementById('dive-mode');
+            const nitroxInputGroup = document.getElementById('nitrox-input-group');
+            const o2Input = document.getElementById('o2_percent');
+            if (!modeSelect || !nitroxInputGroup || !o2Input) return;
+            
+            const mode = modeSelect.value;
+            
+            if (mode === 'Nitrox') {
+                nitroxInputGroup.classList.remove('hidden');
+                o2Input.required = true;
+                if (o2Input.value === '21') o2Input.value = '32';
+            } else {
+                nitroxInputGroup.classList.add('hidden');
+                o2Input.required = false;
+                o2Input.value = '21';
+            }
+        },
+
+        openModal(contentHTML) {
+            const modalContainer = document.getElementById('modal-container');
+            const modalContent = document.getElementById('modal-content');
+            modalContent.innerHTML = contentHTML;
+            modalContainer.classList.remove('hidden');
+            // Bind listeners for forms/buttons inside the modal content
+            if (this.currentEditingLog) {
+                document.getElementById('edit-log-form').addEventListener('submit', this.handleEditLogSubmit.bind(this));
+                document.getElementById('dive-mode').addEventListener('change', this.toggleNitroxInput);
+                // Re-attach SAC listeners for the modal form
+                ['depth_m', 'avg_depth_m', 'time_min', 'air_start_bar', 'air_end_bar', 'tank_volume_l'].forEach(id => {
+                    const input = document.getElementById(id);
+                    if(input) input.addEventListener('input', this.calculateAndDisplaySAC.bind(this));
+                });
+                this.toggleNitroxInput(); // Initial check for edit modal
+                this.calculateAndDisplaySAC(); // Initial SAC calculation for edit modal
+            }
+        },
+
+        closeModal() {
+            document.getElementById('modal-container').classList.add('hidden');
+            this.currentEditingLog = null;
+            this.currentEditingGear = null;
+        },
+
+        openEditModal(logId) {
+            const log = this.diveLogs.find(l => l.id === logId);
+            if (!log) return console.error('Log not found for ID:', logId);
+
+            this.currentEditingLog = log;
+            const formHTML = this.renderLogEntryForm(log);
+
+            const modalBody = `${formHTML}`;
+            this.openModal(modalBody);
+        },
+
+        openDeleteModal(logId) {
+            const log = this.diveLogs.find(l => l.id === logId);
+            if (!log) return;
+
+            const modalBody = `
+                <h3 class="text-xl font-semibold text-gray-900 mb-4">確認刪除紀錄</h3>
+                <p class="text-gray-700 mb-6">您確定要刪除 ${log.date} 在 ${log.location} 的潛水紀錄嗎？此操作不可逆。</p>
+                <div class="flex justify-end space-x-3">
+                    <button onclick="app.closeModal()" class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+                        取消
+                    </button>
+                    <button onclick="app.deleteLog('${logId}')" class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700">
+                        確認刪除
+                    </button>
+                </div>
+            `;
+            this.openModal(modalBody);
+        },
+
+        // --- Firestore Data Handling ---
+
+        getCollectionRef(collectionName) {
+            if (!db || !userId) {
+                console.error("Firestore not initialized or userId missing. Cannot access data.");
+                return null;
+            }
+            // Private data storage path: /artifacts/{appId}/users/{userId}/{collectionName}
+            const userDocRef = doc(db, `artifacts/${appId}/users/${userId}`);
+            return collection(userDocRef, collectionName);
+        },
+
+        async addLog(logData) {
+            const logsRef = this.getCollectionRef('logs');
+            if (!logsRef) return;
+            try {
+                await addDoc(logsRef, logData);
+                console.log('Log added successfully');
+            } catch (e) {
+                console.error('Error adding document: ', e);
+            }
+        },
+
+        // --- UPDATED: handleNewLogSubmit to capture new fields ---
+        handleNewLogSubmit(event) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+
+            // Collect Gear Used
+            const gearUsed = [];
+            formData.getAll('gear_used').forEach(item => gearUsed.push(item));
+
+            // Parse numeric fields for SAC calculation
+            const avgDepthM = parseFloat(formData.get('avg_depth_m'));
+            const timeMin = parseInt(formData.get('time_min'), 10);
+            const startBar = parseInt(formData.get('air_start_bar'), 10);
+            const endBar = parseInt(formData.get('air_end_bar'), 10);
+            const tankVolumeL = parseFloat(formData.get('tank_volume_l'));
+
+            const sacValue = this.calculateSAC(avgDepthM, timeMin, startBar, endBar, tankVolumeL);
+
+            const newLog = {
+                date: formData.get('date'),
+                location: formData.get('location'),
+                
+                // NEW: Time and Environment Fields
+                entryTime: formData.get('entryTime'), // Full datetime string
+                exitTime: formData.get('exitTime'),   // Full datetime string
+                diveType: formData.get('diveType'),   // 岸潛 or 船潛
+                waveCondition: formData.get('waveCondition'), // 浪況
+                currentCondition: formData.get('currentCondition'), // 流況
+                weather: formData.get('weather'), // 天氣
+
+                // Existing Fields
+                depth_m: parseFloat(formData.get('depth_m')),
+                avg_depth_m: avgDepthM,
+                time_min: timeMin,
+                tank_volume_l: tankVolumeL,
+                water_temp_c: formData.get('water_temp_c') ? parseFloat(formData.get('water_temp_c')) : null,
+                air_start_bar: startBar,
+                air_end_bar: endBar,
+                visibility_m: formData.get('visibility_m') ? parseInt(formData.get('visibility_m'), 10) : null,
+                mode: formData.get('mode'),
+                o2_percent: formData.get('mode') === 'Nitrox' ? parseInt(formData.get('o2_percent'), 10) : 21,
+                notes: formData.get('notes'),
+                gear_used: gearUsed,
+                avg_sac_l_min: sacValue, // Store calculated SAC
+                created_at: new Date().toISOString()
+            };
+
+            this.addLog(newLog);
+            form.reset();
+            document.getElementById('o2_percent').value = '21';
+            document.getElementById('tank_volume_l').value = '12.0';
+            this.setPage('history');
+        },
         
-        if (typeof __initial_auth_token === 'undefined') {
-            renderApp();
+        async updateLog(logId, updatedData) {
+            const logsRef = this.getCollectionRef('logs');
+            if (!logsRef) return;
+            try {
+                const logDocRef = doc(logsRef, logId);
+                await updateDoc(logDocRef, updatedData);
+                console.log('Log updated successfully');
+            } catch (e) {
+                console.error('Error updating document: ', e);
+            }
+        },
+        
+        async deleteLog(logId) {
+            const logsRef = this.getCollectionRef('logs');
+            if (!logsRef) return;
+            try {
+                await deleteDoc(doc(logsRef, logId));
+                this.closeModal();
+                console.log('Log deleted successfully');
+            } catch (e) {
+                console.error('Error deleting document: ', e);
+            }
+        },
+        
+        // ... (Certification and Gear Handlers remain the same) ...
+
+        handleNewCertificationSubmit(event) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new FormData(form);
+
+            const newCert = {
+                agency: formData.get('agency').trim(),
+                level: formData.get('level').trim(),
+                number: formData.get('number').trim(),
+                date: formData.get('date'),
+                created_at: new Date().toISOString()
+            };
+
+            if (newCert.agency && newCert.level) {
+                this.addCertification(newCert);
+                form.reset();
+            }
+        },
+
+        async addCertification(certData) {
+            const certRef = this.getCollectionRef('certifications');
+            if (!certRef) return;
+            try {
+                await addDoc(certRef, certData);
+                console.log('Certification added successfully');
+            } catch (e) {
+                console.error('Error adding certification: ', e);
+            }
+        },
+
+        async deleteCertification(certId) {
+            const certRef = this.getCollectionRef('certifications');
+            if (!certRef) return;
+            try {
+                await deleteDoc(doc(certRef, certId));
+                console.log('Certification deleted successfully');
+            } catch (e) {
+                console.error('Error deleting certification: ', e);
+            }
+        },
+
+        handleNewGearSubmit(event) {
+            event.preventDefault();
+            const form = event.target;
+            const gearName = document.getElementById('new_gear_name').value.trim();
+            if (gearName) {
+                this.addGear({ name: gearName, created_at: new Date().toISOString() });
+                form.reset();
+            }
+        },
+
+        async addGear(gearData) {
+            const gearRef = this.getCollectionRef('gear');
+            if (!gearRef) return;
+            try {
+                await addDoc(gearRef, gearData);
+                console.log('Gear added successfully');
+            } catch (e) {
+                console.error('Error adding gear: ', e);
+            }
+        },
+
+        async deleteGear(gearId) {
+            const gearRef = this.getCollectionRef('gear');
+            if (!gearRef) return;
+            try {
+                await deleteDoc(doc(gearRef, gearId));
+                console.log('Gear deleted successfully');
+            } catch (e) {
+                console.error('Error deleting gear: ', e);
+            }
+        },
+
+        // --- Initialization and Listeners ---
+
+        setupListeners() {
+            if (!db || !userId) return;
+
+            // 1. Logs Listener
+            const logsRef = this.getCollectionRef('logs');
+            if (logsRef) {
+                const logsQuery = query(logsRef, orderBy('date', 'desc'));
+                onSnapshot(logsQuery, (snapshot) => {
+                    this.diveLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    this.render();
+                }, (error) => console.error("Error listening to logs:", error));
+            }
+
+            // 2. Gear Listener
+            const gearRef = this.getCollectionRef('gear');
+            if (gearRef) {
+                onSnapshot(gearRef, (snapshot) => {
+                    this.gearList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    this.render();
+                }, (error) => console.error("Error listening to gear:", error));
+            }
+
+            // 3. Certifications Listener
+            const certsRef = this.getCollectionRef('certifications');
+            if (certsRef) {
+                onSnapshot(certsRef, (snapshot) => {
+                    this.certifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    this.render();
+                }, (error) => console.error("Error listening to certifications:", error));
+            }
+
+            // Attach form submission handlers (for main forms only)
+            const contentContainer = document.getElementById('page-content');
+            
+            // Remove previous listeners to prevent duplicates
+            contentContainer.removeEventListener('submit', this.boundLogFormHandler);
+            contentContainer.removeEventListener('submit', this.boundGearFormHandler);
+            contentContainer.removeEventListener('submit', this.boundCertFormHandler);
+
+            // Re-attach listeners for main app forms
+            this.boundLogFormHandler = (e) => { if (e.target.id === 'new-log-form') this.handleNewLogSubmit(e); };
+            this.boundGearFormHandler = (e) => { if (e.target.id === 'new-gear-form') this.handleNewGearSubmit(e); };
+            this.boundCertFormHandler = (e) => { if (e.target.id === 'new-certification-form') this.handleNewCertificationSubmit(e); };
+            
+            contentContainer.addEventListener('submit', this.boundLogFormHandler);
+            contentContainer.addEventListener('submit', this.boundGearFormHandler);
+            contentContainer.addEventListener('submit', this.boundCertFormHandler);
+        },
+
+        async init() {
+            // 1. Initialize Firebase App and Services
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            // 2. Wait for Auth State to be ready
+            onAuthStateChanged(auth, (user) => {
+                isAuthReady = true;
+                if (user) {
+                    userId = user.uid;
+                    this.isLoggedIn = true;
+                    console.log(`User logged in with userId: ${userId}`);
+                    this.setupListeners(); // Start listening to Firestore data
+                } else {
+                    userId = null;
+                    this.isLoggedIn = false;
+                    this.authError = ''; // Clear error on logout
+                    console.log("No user signed in.");
+                    // Clear data when logged out
+                    this.diveLogs = [];
+                    this.gearList = [];
+                    this.certifications = [];
+                    
+                    // Attach Auth form handlers after rendering Auth UI
+                    document.getElementById('page-content').addEventListener('submit', (e) => {
+                        if (e.target.id === 'login-form' || e.target.id === 'register-form') {
+                            this.handleAuthSubmit(e);
+                        }
+                    });
+                }
+                this.render(); // Re-render based on login status
+            });
         }
-    </script>
+    };
+
+    // Start the application initialization
+    window.onload = () => {
+        window.app.init();
+    };
+
+</script>
 </body>
 </html>
